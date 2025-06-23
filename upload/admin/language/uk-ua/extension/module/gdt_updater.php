@@ -1,0 +1,42 @@
+<?php
+// Heading
+$_['heading_title']          = 'GDT Updater';
+
+// Text
+$_['text_extension']         = 'Extensions';
+$_['text_success']           = 'Success: You have modified GDT Updater module!';
+$_['text_edit']              = 'Edit GDT Updater Module';
+$_['text_check_updates']     = 'Check for Updates';
+$_['text_updates_found']     = 'Found %s updates available. Check the list below.';
+$_['text_no_updates']        = 'All modules are up to date.';
+$_['text_update_success']    = 'Module %s has been successfully updated.';
+$_['text_current_version']   = 'Current Version';
+$_['text_new_version']       = 'New Version';
+$_['text_update']            = 'Update';
+$_['text_latest']            = 'Latest Version';
+$_['text_up_to_date']        = 'Up to Date';
+$_['text_installed_modules'] = 'Installed Modules';
+
+// Column
+$_['column_name']            = 'Module Name';
+$_['column_description']     = 'Description';
+$_['column_action']          = 'Action';
+
+// Entry
+$_['entry_server']           = 'Update Server URL';
+$_['entry_status']           = 'Status';
+
+// Button
+$_['button_check']           = 'Check Now';
+$_['button_update']          = 'Update';
+
+// Error
+$_['error_permission']       = 'Warning: You do not have permission to modify GDT Updater module!';
+$_['error_server']           = 'Update server URL is not configured.';
+$_['error_server_empty']     = 'Update server URL cannot be empty.';
+$_['error_no_modules']       = 'No GDT modules found in your system.';
+$_['error_code']             = 'Module code not specified.';
+$_['error_module_not_found'] = 'Module not found.';
+$_['error_no_update']        = 'No update available for this module.';
+$_['error_download']         = 'Failed to download the update package.';
+$_['error_zip']              = 'Failed to open the update package.';

@@ -55,6 +55,34 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
             $data['module_gdt_updater_status'] = $this->config->get('module_gdt_updater_status');
         }
         
+        // Получаем список установленных модулей
+        $data['installed_modules'] = $this->getInstalledModules();
+        
+        // Проверяем обновления для модулей
+        $data['module_updates'] = array();
+        
+        // Получаем URL сервера обновлений
+        $server_url = $this->config->get('module_gdt_updater_server');
+        
+        // Проверяем, не пустой ли URL и устанавливаем значение по умолчанию, если нужно
+        if (empty($server_url)) {
+            // Для локальной разработки используем путь к локальному серверу
+            $server_url = HTTP_SERVER . 'ocm_gdt_update/server';
+        }
+        
+        if (!empty($server_url) && !empty($data['installed_modules'])) {
+            foreach ($data['installed_modules'] as $module) {
+                $update_info = $this->checkModuleUpdate($server_url, $module);
+                
+                // Добавляем информацию об обновлении
+                $data['module_updates'][$module['code']] = array(
+                    'has_update' => $update_info ? true : false,
+                    'new_version' => $update_info ? $update_info['version'] : '',
+                    'update_url' => $update_info ? $this->url->link('extension/module/gdt_updater/update', 'user_token=' . $this->session->data['user_token'] . '&code=' . $module['code'], true) : ''
+                );
+            }
+        }
+        
         $data['check_updates'] = $this->url->link('extension/module/gdt_updater/check', 'user_token=' . $this->session->data['user_token'], true);
         
         $data['header'] = $this->load->controller('common/header');
@@ -71,6 +99,23 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
         
         // Получаем URL сервера обновлений
         $server_url = $this->config->get('module_gdt_updater_server');
+        
+        // Проверяем, не пустой ли URL и устанавливаем значение по умолчанию, если нужно
+        if (empty($server_url)) {
+            // Проверяем наличие переменной окружения для Docker
+            $docker_server_url = getenv('GDT_UPDATE_SERVER');
+            if ($docker_server_url) {
+                $server_url = $docker_server_url;
+            } 
+            // Если переменной окружения нет, используем HTTP_SERVER
+            elseif (defined('HTTP_SERVER')) {
+                $server_url = HTTP_SERVER . 'ocm_gdt_update/server';
+            }
+            // Если ничего не подошло, используем значение по умолчанию
+            else {
+                $server_url = 'https://example.com/server';
+            }
+        }
         
         if (empty($server_url)) {
             $json['error'] = $this->language->get('error_server');
@@ -119,6 +164,17 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
             
             // Получаем URL сервера обновлений
             $server_url = $this->config->get('module_gdt_updater_server');
+            
+            // Проверяем, не пустой ли URL и устанавливаем значение по умолчанию, если нужно
+            if (empty($server_url)) {
+                // Для локальной разработки используем путь к локальному серверу
+                $server_url = 'https://example.com/server';
+                
+                // Если есть определенная константа HTTP_SERVER, используем ее
+                if (defined('HTTP_SERVER')) {
+                    $server_url = HTTP_SERVER . 'ocm_gdt_update/server';
+                }
+            }
             
             if (empty($server_url)) {
                 $json['error'] = $this->language->get('error_server');
@@ -217,20 +273,51 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
             'version' => $module['version']
         );
         
-        $options = array(
-            'header' => array(
+        // Инициализация cURL сессии
+        $curl = curl_init();
+        
+        // Настройка параметров cURL
+        curl_setopt_array($curl, array(
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => http_build_query($post_data),
+            CURLOPT_HTTPHEADER => array(
                 'Content-Type: application/x-www-form-urlencoded',
                 'User-Agent: GDT-Updater/1.0'
             ),
-            'method' => 'POST',
-            'content' => http_build_query($post_data)
-        );
+            CURLOPT_TIMEOUT => 10, // Уменьшаем таймаут
+            CURLOPT_CONNECTTIMEOUT => 5, // Добавляем таймаут на соединение
+            CURLOPT_SSL_VERIFYPEER => false, // Для разработки, в продакшне лучше установить true
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_FAILONERROR => false // Не считать HTTP ошибки за сбой curl
+        ));
         
-        $context = stream_context_create(array('http' => $options));
+        // Выполнение запроса
+        $response = curl_exec($curl);
+        $error = curl_error($curl);
+        $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
         
-        $response = @file_get_contents($url, false, $context);
+        // Закрытие cURL сессии
+        curl_close($curl);
         
-        if ($response !== false) {
+        if ($error) {
+            // Логирование ошибки, если объект $log доступен
+            if (property_exists($this, 'log')) {
+                $this->log->write('GDT Updater cURL error: ' . $error);
+            }
+            return false;
+        }
+        
+        if ($http_code != 200) {
+            // Логирование ошибки HTTP, если объект $log доступен
+            if (property_exists($this, 'log')) {
+                $this->log->write('GDT Updater HTTP error: ' . $http_code);
+            }
+            return false;
+        }
+        
+        if ($response) {
             $update_info = json_decode($response, true);
             
             if (isset($update_info['status']) && $update_info['status'] == 'update_available') {
@@ -251,26 +338,56 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
                 'version' => $update_info['version']
             );
             
-            $options = array(
-                'header' => array(
+            // Инициализация cURL сессии
+            $curl = curl_init();
+            
+            // Настройка параметров cURL
+            curl_setopt_array($curl, array(
+                CURLOPT_URL => $download_url,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => http_build_query($post_data),
+                CURLOPT_HTTPHEADER => array(
                     'Content-Type: application/x-www-form-urlencoded',
                     'User-Agent: GDT-Updater/1.0'
                 ),
-                'method' => 'POST',
-                'content' => http_build_query($post_data)
-            );
+                CURLOPT_TIMEOUT => 60, // Увеличенный таймаут для загрузки файлов
+                CURLOPT_CONNECTTIMEOUT => 10, // Таймаут на соединение
+                CURLOPT_SSL_VERIFYPEER => false, // Для разработки, в продакшне лучше установить true
+                CURLOPT_SSL_VERIFYHOST => 2,
+                CURLOPT_FAILONERROR => false // Не считать HTTP ошибки за сбой curl
+            ));
             
-            $context = stream_context_create(array('http' => $options));
+            // Выполнение запроса
+            $response = curl_exec($curl);
+            $error = curl_error($curl);
+            $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+            
+            // Закрытие cURL сессии
+            curl_close($curl);
+            
+            if ($error) {
+                // Логирование ошибки, если объект $log доступен
+                if (property_exists($this, 'log')) {
+                    $this->log->write('GDT Updater cURL error: ' . $error);
+                }
+                return $this->language->get('error_download');
+            }
+            
+            if ($http_code != 200) {
+                // Логирование ошибки HTTP, если объект $log доступен
+                if (property_exists($this, 'log')) {
+                    $this->log->write('GDT Updater HTTP error: ' . $http_code);
+                }
+                return $this->language->get('error_download');
+            }
+            
+            if (empty($response)) {
+                return $this->language->get('error_download');
+            }
             
             // Временный файл для загрузки
             $temp_file = DIR_DOWNLOAD . 'update_' . $module['code'] . '_' . $update_info['version'] . '.zip';
-            
-            // Загружаем файл обновления
-            $response = @file_get_contents($download_url, false, $context);
-            
-            if ($response === false) {
-                return $this->language->get('error_download');
-            }
             
             // Сохраняем во временный файл
             file_put_contents($temp_file, $response);

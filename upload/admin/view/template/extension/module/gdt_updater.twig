@@ -56,6 +56,44 @@
         <h3 class="panel-title"><i class="fa fa-list"></i> {{ text_check_updates }}</h3>
       </div>
       <div class="panel-body">
+        {% if installed_modules %}
+          <table class="table table-bordered table-hover">
+            <thead>
+              <tr>
+                <td>{{ column_name }}</td>
+                <td>{{ column_description }}</td>
+                <td>{{ text_current_version }}</td>
+                <td>{{ text_new_version }}</td>
+                <td class="text-right">{{ column_action }}</td>
+              </tr>
+            </thead>
+            <tbody>
+              {% for module in installed_modules %}
+              <tr>
+                <td>{{ module.name }}</td>
+                <td>{{ module.description }}</td>
+                <td>{{ module.version }}</td>
+                <td>
+                  {% if module_updates[module.code].has_update %}
+                    {{ module_updates[module.code].new_version }}
+                  {% else %}
+                    <span class="text-success">{{ text_latest }}</span>
+                  {% endif %}
+                </td>
+                <td class="text-right">
+                  {% if module_updates[module.code].has_update %}
+                    <a href="{{ module_updates[module.code].update_url }}" class="btn btn-primary update-module" data-code="{{ module.code }}"><i class="fa fa-refresh"></i> {{ button_update }}</a>
+                  {% else %}
+                    <button class="btn btn-default" disabled="disabled"><i class="fa fa-check"></i> {{ text_up_to_date }}</button>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div class="alert alert-info"><i class="fa fa-info-circle"></i> {{ error_no_modules }}</div>
+        {% endif %}
         <div id="update-results"></div>
       </div>
     </div>
@@ -79,34 +117,13 @@ $('#button-check').on('click', function() {
             if (json['error']) {
                 $('#update-results').html('<div class="alert alert-danger"><i class="fa fa-exclamation-circle"></i> ' + json['error'] + '</div>');
             } else if (json['success']) {
-                html = '<div class="alert alert-success"><i class="fa fa-check-circle"></i> ' + json['success'] + '</div>';
+                // Показываем сообщение об успешной проверке
+                $('#update-results').html('<div class="alert alert-success"><i class="fa fa-check-circle"></i> ' + json['success'] + '</div>');
                 
-                if (json['modules'] && json['modules'].length > 0) {
-                    html += '<table class="table table-bordered table-hover">';
-                    html += '<thead>';
-                    html += '<tr>';
-                    html += '<td>{{ column_name }}</td>';
-                    html += '<td>{{ text_current_version }}</td>';
-                    html += '<td>{{ text_new_version }}</td>';
-                    html += '<td class="text-right">{{ column_action }}</td>';
-                    html += '</tr>';
-                    html += '</thead>';
-                    html += '<tbody>';
-                    
-                    for (i = 0; i < json['modules'].length; i++) {
-                        html += '<tr>';
-                        html += '<td>' + json['modules'][i]['name'] + '</td>';
-                        html += '<td>' + json['modules'][i]['current_version'] + '</td>';
-                        html += '<td>' + json['modules'][i]['new_version'] + '</td>';
-                        html += '<td class="text-right"><a href="' + json['modules'][i]['update_url'] + '" class="btn btn-primary update-module" data-code="' + json['modules'][i]['code'] + '"><i class="fa fa-refresh"></i> {{ button_update }}</a></td>';
-                        html += '</tr>';
-                    }
-                    
-                    html += '</tbody>';
-                    html += '</table>';
-                }
-                
-                $('#update-results').html(html);
+                // Перезагружаем страницу, чтобы обновить список модулей
+                setTimeout(function() {
+                    location.reload();
+                }, 2000);
             }
         },
         error: function(xhr, ajaxOptions, thrownError) {
@@ -138,9 +155,9 @@ $(document).on('click', '.update-module', function(e) {
             if (json['success']) {
                 $('#update-results').prepend('<div class="alert alert-success"><i class="fa fa-check-circle"></i> ' + json['success'] + '</div>');
                 
-                // Обновляем кнопку проверки обновлений после успешного обновления
+                // Перезагружаем страницу после успешного обновления
                 setTimeout(function() {
-                    $('#button-check').trigger('click');
+                    location.reload();
                 }, 2000);
             }
         },

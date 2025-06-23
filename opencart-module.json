@@ -1,0 +1,10 @@
+{
+    "files": [
+        "admin/controller/extension/module/gdt_updater.php",
+        "admin/language/en-gb/extension/module/gdt_updater.php",
+        "admin/language/ru-ru/extension/module/gdt_updater.php",
+        "admin/language/uk-ua/extension/module/gdt_updater.php",
+        "admin/view/template/extension/module/gdt_updater.twig",
+        "system/hook/gdt_updater.php"
+    ]
+}

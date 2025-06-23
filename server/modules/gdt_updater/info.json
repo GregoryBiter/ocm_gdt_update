@@ -1,0 +1,6 @@
+{
+    "name": "GDT Updater",
+    "code": "gdt_updater",
+    "version": "1.0.1",
+    "description": "Обновление GDT Updater с исправлением ошибок"
+}

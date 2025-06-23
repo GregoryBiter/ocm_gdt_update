@@ -13,6 +13,14 @@ $_['text_update_success']    = 'Module %s has been successfully updated.';
 $_['text_current_version']   = 'Current Version';
 $_['text_new_version']       = 'New Version';
 $_['text_update']            = 'Update';
+$_['text_latest']            = 'Latest Version';
+$_['text_up_to_date']        = 'Up to Date';
+$_['text_installed_modules'] = 'Installed Modules';
+
+// Column
+$_['column_name']            = 'Module Name';
+$_['column_description']     = 'Description';
+$_['column_action']          = 'Action';
 
 // Entry
 $_['entry_server']           = 'Update Server URL';

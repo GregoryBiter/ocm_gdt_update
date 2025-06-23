@@ -1,6 +1,0 @@
-{
-    "name": "GDT System",
-    "code": "gdt_system",
-    "version": "1.0.1",
-    "description": "Обновление GDT System с исправлением ошибок"
-}
