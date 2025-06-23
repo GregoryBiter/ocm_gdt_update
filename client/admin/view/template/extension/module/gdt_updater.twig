@@ -1,0 +1,153 @@
+{{ header }}{{ column_left }}
+<div id="content">
+  <div class="page-header">
+    <div class="container-fluid">
+      <div class="pull-right">
+        <button type="button" id="button-check" data-loading-text="{{ text_loading }}" class="btn btn-info"><i class="fa fa-refresh"></i> {{ button_check }}</button>
+        <button type="submit" form="form-module" data-toggle="tooltip" title="{{ button_save }}" class="btn btn-primary"><i class="fa fa-save"></i></button>
+        <a href="{{ cancel }}" data-toggle="tooltip" title="{{ button_cancel }}" class="btn btn-default"><i class="fa fa-reply"></i></a>
+      </div>
+      <h1>{{ heading_title }}</h1>
+      <ul class="breadcrumb">
+        {% for breadcrumb in breadcrumbs %}
+        <li><a href="{{ breadcrumb.href }}">{{ breadcrumb.text }}</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  <div class="container-fluid">
+    {% if error_warning %}
+    <div class="alert alert-danger alert-dismissible"><i class="fa fa-exclamation-circle"></i> {{ error_warning }}
+      <button type="button" class="close" data-dismiss="alert">&times;</button>
+    </div>
+    {% endif %}
+    <div class="panel panel-default">
+      <div class="panel-heading">
+        <h3 class="panel-title"><i class="fa fa-pencil"></i> {{ text_edit }}</h3>
+      </div>
+      <div class="panel-body">
+        <form action="{{ action }}" method="post" enctype="multipart/form-data" id="form-module" class="form-horizontal">
+          <div class="form-group">
+            <label class="col-sm-2 control-label" for="input-server">{{ entry_server }}</label>
+            <div class="col-sm-10">
+              <input type="text" name="module_gdt_updater_server" value="{{ module_gdt_updater_server }}" placeholder="{{ entry_server }}" id="input-server" class="form-control" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="col-sm-2 control-label" for="input-status">{{ entry_status }}</label>
+            <div class="col-sm-10">
+              <select name="module_gdt_updater_status" id="input-status" class="form-control">
+                {% if module_gdt_updater_status %}
+                <option value="1" selected="selected">{{ text_enabled }}</option>
+                <option value="0">{{ text_disabled }}</option>
+                {% else %}
+                <option value="1">{{ text_enabled }}</option>
+                <option value="0" selected="selected">{{ text_disabled }}</option>
+                {% endif %}
+              </select>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+    <div class="panel panel-default">
+      <div class="panel-heading">
+        <h3 class="panel-title"><i class="fa fa-list"></i> {{ text_check_updates }}</h3>
+      </div>
+      <div class="panel-body">
+        <div id="update-results"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="text/javascript"><!--
+$('#button-check').on('click', function() {
+    $('#update-results').html('');
+    
+    $.ajax({
+        url: '{{ check_updates }}',
+        dataType: 'json',
+        beforeSend: function() {
+            $('#button-check').button('loading');
+        },
+        complete: function() {
+            $('#button-check').button('reset');
+        },
+        success: function(json) {
+            if (json['error']) {
+                $('#update-results').html('<div class="alert alert-danger"><i class="fa fa-exclamation-circle"></i> ' + json['error'] + '</div>');
+            } else if (json['success']) {
+                html = '<div class="alert alert-success"><i class="fa fa-check-circle"></i> ' + json['success'] + '</div>';
+                
+                if (json['modules'] && json['modules'].length > 0) {
+                    html += '<table class="table table-bordered table-hover">';
+                    html += '<thead>';
+                    html += '<tr>';
+                    html += '<td>{{ column_name }}</td>';
+                    html += '<td>{{ text_current_version }}</td>';
+                    html += '<td>{{ text_new_version }}</td>';
+                    html += '<td class="text-right">{{ column_action }}</td>';
+                    html += '</tr>';
+                    html += '</thead>';
+                    html += '<tbody>';
+                    
+                    for (i = 0; i < json['modules'].length; i++) {
+                        html += '<tr>';
+                        html += '<td>' + json['modules'][i]['name'] + '</td>';
+                        html += '<td>' + json['modules'][i]['current_version'] + '</td>';
+                        html += '<td>' + json['modules'][i]['new_version'] + '</td>';
+                        html += '<td class="text-right"><a href="' + json['modules'][i]['update_url'] + '" class="btn btn-primary update-module" data-code="' + json['modules'][i]['code'] + '"><i class="fa fa-refresh"></i> {{ button_update }}</a></td>';
+                        html += '</tr>';
+                    }
+                    
+                    html += '</tbody>';
+                    html += '</table>';
+                }
+                
+                $('#update-results').html(html);
+            }
+        },
+        error: function(xhr, ajaxOptions, thrownError) {
+            alert(thrownError + "\r\n" + xhr.statusText + "\r\n" + xhr.responseText);
+        }
+    });
+});
+
+$(document).on('click', '.update-module', function(e) {
+    e.preventDefault();
+    
+    var element = this;
+    var url = $(element).attr('href');
+    
+    $.ajax({
+        url: url,
+        dataType: 'json',
+        beforeSend: function() {
+            $(element).button('loading');
+        },
+        complete: function() {
+            $(element).button('reset');
+        },
+        success: function(json) {
+            if (json['error']) {
+                $('#update-results').prepend('<div class="alert alert-danger"><i class="fa fa-exclamation-circle"></i> ' + json['error'] + '</div>');
+            }
+            
+            if (json['success']) {
+                $('#update-results').prepend('<div class="alert alert-success"><i class="fa fa-check-circle"></i> ' + json['success'] + '</div>');
+                
+                // Обновляем кнопку проверки обновлений после успешного обновления
+                setTimeout(function() {
+                    $('#button-check').trigger('click');
+                }, 2000);
+            }
+        },
+        error: function(xhr, ajaxOptions, thrownError) {
+            alert(thrownError + "\r\n" + xhr.statusText + "\r\n" + xhr.responseText);
+        }
+    });
+});
+//--></script>
+{{ footer }}
