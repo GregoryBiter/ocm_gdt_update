@@ -21,6 +21,18 @@
       <button type="button" class="close" data-dismiss="alert">&times;</button>
     </div>
     {% endif %}
+    
+    {% if error_curl is defined and error_curl is not empty %}
+    <div class="alert alert-danger alert-dismissible"><i class="fa fa-exclamation-circle"></i> {{ error_curl }}
+      <button type="button" class="close" data-dismiss="alert">&times;</button>
+    </div>
+    {% endif %}
+    
+    {% if error_http is defined and error_http is not empty %}
+    <div class="alert alert-danger alert-dismissible"><i class="fa fa-exclamation-circle"></i> {{ error_http }}
+      <button type="button" class="close" data-dismiss="alert">&times;</button>
+    </div>
+    {% endif %}
     <div class="panel panel-default">
       <div class="panel-heading">
         <h3 class="panel-title"><i class="fa fa-pencil"></i> {{ text_edit }}</h3>
@@ -31,6 +43,20 @@
             <label class="col-sm-2 control-label" for="input-server">{{ entry_server }}</label>
             <div class="col-sm-10">
               <input type="text" name="module_gdt_updater_server" value="{{ module_gdt_updater_server }}" placeholder="{{ entry_server }}" id="input-server" class="form-control" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="col-sm-2 control-label" for="input-client-id">{{ entry_client_id }}</label>
+            <div class="col-sm-10">
+              <input type="text" name="module_gdt_updater_client_id" value="{{ module_gdt_updater_client_id }}" placeholder="{{ entry_client_id }}" id="input-client-id" class="form-control" />
+              <small class="help-block">{{ help_client_id }}</small>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="col-sm-2 control-label" for="input-api-key">{{ entry_api_key }}</label>
+            <div class="col-sm-10">
+              <input type="text" name="module_gdt_updater_api_key" value="{{ module_gdt_updater_api_key }}" placeholder="{{ entry_api_key }}" id="input-api-key" class="form-control" />
+              <small class="help-block">{{ help_api_key }}</small>
             </div>
           </div>
           <div class="form-group">
@@ -85,6 +111,9 @@
                     <a href="{{ module_updates[module.code].update_url }}" class="btn btn-primary update-module" data-code="{{ module.code }}"><i class="fa fa-refresh"></i> {{ button_update }}</a>
                   {% else %}
                     <button class="btn btn-default" disabled="disabled"><i class="fa fa-check"></i> {{ text_up_to_date }}</button>
+                  {% endif %}
+                  {% if module_backups[module.code].has_backup %}
+                    <a href="{{ module_backups[module.code].restore_url }}" class="btn btn-warning restore-module" data-code="{{ module.code }}"><i class="fa fa-undo"></i> {{ button_restore }}</a>
                   {% endif %}
                 </td>
               </tr>
@@ -156,6 +185,45 @@ $(document).on('click', '.update-module', function(e) {
                 $('#update-results').prepend('<div class="alert alert-success"><i class="fa fa-check-circle"></i> ' + json['success'] + '</div>');
                 
                 // Перезагружаем страницу после успешного обновления
+                setTimeout(function() {
+                    location.reload();
+                }, 2000);
+            }
+        },
+        error: function(xhr, ajaxOptions, thrownError) {
+            alert(thrownError + "\r\n" + xhr.statusText + "\r\n" + xhr.responseText);
+        }
+    });
+});
+
+$(document).on('click', '.restore-module', function(e) {
+    e.preventDefault();
+    
+    if (!confirm('{{ text_confirm_restore }}')) {
+        return false;
+    }
+    
+    var element = this;
+    var url = $(element).attr('href');
+    
+    $.ajax({
+        url: url,
+        dataType: 'json',
+        beforeSend: function() {
+            $(element).button('loading');
+        },
+        complete: function() {
+            $(element).button('reset');
+        },
+        success: function(json) {
+            if (json['error']) {
+                $('#update-results').prepend('<div class="alert alert-danger"><i class="fa fa-exclamation-circle"></i> ' + json['error'] + '</div>');
+            }
+            
+            if (json['success']) {
+                $('#update-results').prepend('<div class="alert alert-success"><i class="fa fa-check-circle"></i> ' + json['success'] + '</div>');
+                
+                // Перезагружаем страницу после успешного восстановления
                 setTimeout(function() {
                     location.reload();
                 }, 2000);

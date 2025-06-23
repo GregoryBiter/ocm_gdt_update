@@ -1,6 +1,15 @@
 <?php
 class ControllerExtensionModuleGdtUpdater extends Controller {
     private $error = array();
+    private $updater;
+    
+    public function __construct($registry) {
+        parent::__construct($registry);
+        
+        // Загружаем сервис обновления
+        $this->load->library('gbitstudio/updater/service/updater');
+        $this->updater = new \Gbitstudio\Updater\Service\Updater($registry);
+    }
     
     public function index() {
         $this->load->language('extension/module/gdt_updater');
@@ -14,13 +23,25 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
             
             $this->session->data['success'] = $this->language->get('text_success');
             
-            $this->response->redirect($this->url->link('marketplace/extension', 'user_token=' . $this->session->data['user_token'] . '&type=module', true));
+            //$this->response->redirect($this->url->link('marketplace/extension', 'user_token=' . $this->session->data['user_token'] . '&type=module', true));
         }
         
         if (isset($this->error['warning'])) {
             $data['error_warning'] = $this->error['warning'];
         } else {
             $data['error_warning'] = '';
+        }
+        
+        if (isset($this->session->data['success'])) {
+            $data['success'] = $this->session->data['success'];
+            unset($this->session->data['success']);
+        } else {
+            $data['success'] = '';
+        }
+        
+        if (isset($this->session->data['error'])) {
+            $data['error_warning'] = $this->session->data['error'];
+            unset($this->session->data['error']);
         }
         
         $data['breadcrumbs'] = array();
@@ -49,6 +70,18 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
             $data['module_gdt_updater_server'] = $this->config->get('module_gdt_updater_server');
         }
         
+        if (isset($this->request->post['module_gdt_updater_client_id'])) {
+            $data['module_gdt_updater_client_id'] = $this->request->post['module_gdt_updater_client_id'];
+        } else {
+            $data['module_gdt_updater_client_id'] = $this->config->get('module_gdt_updater_client_id');
+        }
+        
+        if (isset($this->request->post['module_gdt_updater_api_key'])) {
+            $data['module_gdt_updater_api_key'] = $this->request->post['module_gdt_updater_api_key'];
+        } else {
+            $data['module_gdt_updater_api_key'] = $this->config->get('module_gdt_updater_api_key');
+        }
+        
         if (isset($this->request->post['module_gdt_updater_status'])) {
             $data['module_gdt_updater_status'] = $this->request->post['module_gdt_updater_status'];
         } else {
@@ -56,10 +89,12 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
         }
         
         // Получаем список установленных модулей
-        $data['installed_modules'] = $this->getInstalledModules();
+        $data['installed_modules'] = $this->updater->getInstalledModules();
         
         // Проверяем обновления для модулей
         $data['module_updates'] = array();
+        $data['module_backups'] = array();
+        $data['module_backups'] = array();
         
         // Получаем URL сервера обновлений
         $server_url = $this->config->get('module_gdt_updater_server');
@@ -72,18 +107,62 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
         
         if (!empty($server_url) && !empty($data['installed_modules'])) {
             foreach ($data['installed_modules'] as $module) {
-                $update_info = $this->checkModuleUpdate($server_url, $module);
+                $update_info = $this->updater->checkModuleUpdate($server_url, $module);
                 
-                // Добавляем информацию об обновлении
-                $data['module_updates'][$module['code']] = array(
-                    'has_update' => $update_info ? true : false,
-                    'new_version' => $update_info ? $update_info['version'] : '',
-                    'update_url' => $update_info ? $this->url->link('extension/module/gdt_updater/update', 'user_token=' . $this->session->data['user_token'] . '&code=' . $module['code'], true) : ''
+                // Проверяем наличие резервной копии для модуля
+                $backups = $this->updater->getModuleBackups($module['code']);
+                $has_backup = !empty($backups);
+                $backup_dir = '';
+                
+                if ($has_backup && isset($backups[0]['dir'])) {
+                    $backup_dir = $backups[0]['dir'];
+                }
+                
+                // Сохраняем информацию о резервной копии
+                $data['module_backups'][$module['code']] = array(
+                    'has_backup' => $has_backup,
+                    'backup_dir' => $backup_dir,
+                    'restore_url' => $has_backup ? $this->url->link('extension/module/gdt_updater/restore', 'user_token=' . $this->session->data['user_token'] . '&code=' . $module['code'] . '&backup=' . $backup_dir, true) : ''
                 );
+                
+                // Проверяем наличие резервной копии для модуля
+                $backups = $this->updater->getModuleBackups($module['code']);
+                $has_backup = !empty($backups);
+                $backup_dir = '';
+                
+                if ($has_backup && isset($backups[0]['dir'])) {
+                    $backup_dir = $backups[0]['dir'];
+                }
+                
+                // Сохраняем информацию о резервной копии
+                $data['module_backups'][$module['code']] = array(
+                    'has_backup' => $has_backup,
+                    'backup_dir' => $backup_dir,
+                    'restore_url' => $has_backup ? $this->url->link('extension/module/gdt_updater/restore', 'user_token=' . $this->session->data['user_token'] . '&code=' . $module['code'] . '&backup=' . $backup_dir, true) : ''
+                );
+                
+                // Обрабатываем возможные ошибки curl
+                if (is_array($update_info) && isset($update_info['error'])) {
+                    if ($update_info['error'] == 'curl' && !empty($update_info['message'])) {
+                        $data['error_curl'] = sprintf($this->language->get('error_curl'), $update_info['message']);
+                    } elseif ($update_info['error'] == 'http' && !empty($update_info['code'])) {
+                        $data['error_http'] = sprintf($this->language->get('error_http'), $update_info['code']);
+                    }
+                    // Прекращаем цикл при первой ошибке
+                    break;
+                } else {
+                    // Добавляем информацию об обновлении
+                    $data['module_updates'][$module['code']] = array(
+                        'has_update' => $update_info ? true : false,
+                        'new_version' => $update_info ? $update_info['version'] : '',
+                        'update_url' => $update_info ? $this->url->link('extension/module/gdt_updater/update', 'user_token=' . $this->session->data['user_token'] . '&code=' . $module['code'], true) : ''
+                    );
+                }
             }
         }
         
         $data['check_updates'] = $this->url->link('extension/module/gdt_updater/check', 'user_token=' . $this->session->data['user_token'], true);
+        $data['user_token'] = $this->session->data['user_token'];
         
         $data['header'] = $this->load->controller('common/header');
         $data['column_left'] = $this->load->controller('common/column_left');
@@ -121,15 +200,28 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
             $json['error'] = $this->language->get('error_server');
         } else {
             // Получаем список установленных модулей
-            $modules = $this->getInstalledModules();
+            $modules = $this->updater->getInstalledModules();
             
             if (!empty($modules)) {
                 $json['modules'] = array();
                 
                 foreach ($modules as $module) {
-                    $update_info = $this->checkModuleUpdate($server_url, $module);
+                    // Получаем API-ключ и client_id
+                    $client_id = $this->config->get('module_gdt_updater_client_id') ?: 'default';
+                    $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
                     
-                    if ($update_info) {
+                    $update_info = $this->updater->checkModuleUpdate($server_url, $module, $client_id, $api_key);
+                    
+                    // Проверяем на ошибки curl
+                    if (is_array($update_info) && isset($update_info['error'])) {
+                        if ($update_info['error'] == 'curl' && !empty($update_info['message'])) {
+                            $json['error'] = sprintf($this->language->get('error_curl'), $update_info['message']);
+                            break;
+                        } elseif ($update_info['error'] == 'http' && !empty($update_info['code'])) {
+                            $json['error'] = sprintf($this->language->get('error_http'), $update_info['code']);
+                            break;
+                        }
+                    } else if ($update_info) {
                         $json['modules'][] = array(
                             'name' => $module['name'],
                             'code' => $module['code'],
@@ -180,15 +272,30 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
                 $json['error'] = $this->language->get('error_server');
             } else {
                 // Получаем информацию о модуле
-                $module = $this->getModuleByCode($code);
+                $module = $this->updater->getModuleByCode($code);
                 
                 if ($module) {
-                    // Проверяем обновление
-                    $update_info = $this->checkModuleUpdate($server_url, $module);
+                    // Получаем API-ключ и client_id
+                    $client_id = $this->config->get('module_gdt_updater_client_id') ?: 'default';
+                    $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
                     
-                    if ($update_info) {
+                    // Проверяем обновление
+                    $update_info = $this->updater->checkModuleUpdate($server_url, $module, $client_id, $api_key);
+                    
+                    // Проверяем на ошибки curl
+                    if (is_array($update_info) && isset($update_info['error'])) {
+                        if ($update_info['error'] == 'curl' && !empty($update_info['message'])) {
+                            $json['error'] = sprintf($this->language->get('error_curl'), $update_info['message']);
+                        } elseif ($update_info['error'] == 'http' && !empty($update_info['code'])) {
+                            $json['error'] = sprintf($this->language->get('error_http'), $update_info['code']);
+                        }
+                    } else if ($update_info) {
+                        // Получаем API-ключ и client_id
+                        $client_id = $this->config->get('module_gdt_updater_client_id') ?: 'default';
+                        $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
+                        
                         // Скачиваем и устанавливаем обновление
-                        $result = $this->downloadAndInstallUpdate($server_url, $module, $update_info);
+                        $result = $this->updater->downloadAndInstallUpdate($server_url, $module, $update_info, $client_id, $api_key);
                         
                         if ($result === true) {
                             $json['success'] = sprintf($this->language->get('text_update_success'), $module['name']);
@@ -210,6 +317,60 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
         $this->response->setOutput(json_encode($json));
     }
     
+    /**
+     * Страница просмотра резервных копий модуля
+     */
+    /**
+     * Обработка восстановления модуля из резервной копии
+     */
+    public function restore() {
+        $this->load->language('extension/module/gdt_updater');
+        
+        $json = array();
+        
+        // Проверяем наличие необходимых параметров
+        if (isset($this->request->get['code']) && isset($this->request->get['backup'])) {
+            $code = $this->request->get['code'];
+            $backup = $this->request->get['backup'];
+            
+            // Проверяем, что модуль существует
+            $module = $this->updater->getModuleByCode($code);
+            
+            if ($module) {
+                // Восстанавливаем модуль из резервной копии
+                $result = $this->updater->restoreModuleFromBackup($code, $backup);
+                
+                if ($result === true) {
+                    // Получаем информацию о резервной копии для сообщения
+                    $backups = $this->updater->getModuleBackups($code);
+                    $backup_info = null;
+                    
+                    foreach ($backups as $backup_item) {
+                        if ($backup_item['dir'] === $backup) {
+                            $backup_info = $backup_item['info'];
+                            break;
+                        }
+                    }
+                    
+                    if ($backup_info) {
+                        $json['success'] = sprintf($this->language->get('text_restore_success'), $module['name'], $backup_info['from_version']);
+                    } else {
+                        $json['success'] = sprintf($this->language->get('text_restore_success'), $module['name'], '');
+                    }
+                } else {
+                    $json['error'] = sprintf($this->language->get('error_restore'), $result);
+                }
+            } else {
+                $json['error'] = $this->language->get('error_module_not_found');
+            }
+        } else {
+            $json['error'] = $this->language->get('error_code');
+        }
+        
+        $this->response->addHeader('Content-Type: application/json');
+        $this->response->setOutput(json_encode($json));
+    }
+    
     protected function validate() {
         if (!$this->user->hasPermission('modify', 'extension/module/gdt_updater')) {
             $this->error['warning'] = $this->language->get('error_permission');
@@ -220,245 +381,6 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
         }
         
         return !$this->error;
-    }
-    
-    protected function getInstalledModules() {
-        $modules = array();
-        
-        // Ищем файлы в директории system/hook
-        $hook_files = glob(DIR_SYSTEM . 'hook/*.php');
-        
-        if ($hook_files) {
-            foreach ($hook_files as $file) {
-                $content = file_get_contents($file);
-                
-                // Извлекаем информацию о модуле из комментариев
-                preg_match('/name:\s*([^\n]+)/i', $content, $name_match);
-                preg_match('/description:\s*([^\n]+)/i', $content, $description_match);
-                preg_match('/code:\s*([^\n]+)/i', $content, $code_match);
-                preg_match('/version:\s*([^\n]+)/i', $content, $version_match);
-                
-                if (isset($name_match[1]) && isset($code_match[1]) && isset($version_match[1])) {
-                    $modules[] = array(
-                        'name' => trim($name_match[1]),
-                        'description' => isset($description_match[1]) ? trim($description_match[1]) : '',
-                        'code' => trim($code_match[1]),
-                        'version' => trim($version_match[1]),
-                        'file_path' => $file
-                    );
-                }
-            }
-        }
-        
-        return $modules;
-    }
-    
-    protected function getModuleByCode($code) {
-        $modules = $this->getInstalledModules();
-        
-        foreach ($modules as $module) {
-            if ($module['code'] == $code) {
-                return $module;
-            }
-        }
-        
-        return null;
-    }
-    
-    protected function checkModuleUpdate($server_url, $module) {
-        $url = rtrim($server_url, '/') . '/check.php';
-        
-        $post_data = array(
-            'code' => $module['code'],
-            'version' => $module['version']
-        );
-        
-        // Инициализация cURL сессии
-        $curl = curl_init();
-        
-        // Настройка параметров cURL
-        curl_setopt_array($curl, array(
-            CURLOPT_URL => $url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => http_build_query($post_data),
-            CURLOPT_HTTPHEADER => array(
-                'Content-Type: application/x-www-form-urlencoded',
-                'User-Agent: GDT-Updater/1.0'
-            ),
-            CURLOPT_TIMEOUT => 10, // Уменьшаем таймаут
-            CURLOPT_CONNECTTIMEOUT => 5, // Добавляем таймаут на соединение
-            CURLOPT_SSL_VERIFYPEER => false, // Для разработки, в продакшне лучше установить true
-            CURLOPT_SSL_VERIFYHOST => 2,
-            CURLOPT_FAILONERROR => false // Не считать HTTP ошибки за сбой curl
-        ));
-        
-        // Выполнение запроса
-        $response = curl_exec($curl);
-        $error = curl_error($curl);
-        $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-        
-        // Закрытие cURL сессии
-        curl_close($curl);
-        
-        if ($error) {
-            // Логирование ошибки, если объект $log доступен
-            if (property_exists($this, 'log')) {
-                $this->log->write('GDT Updater cURL error: ' . $error);
-            }
-            return false;
-        }
-        
-        if ($http_code != 200) {
-            // Логирование ошибки HTTP, если объект $log доступен
-            if (property_exists($this, 'log')) {
-                $this->log->write('GDT Updater HTTP error: ' . $http_code);
-            }
-            return false;
-        }
-        
-        if ($response) {
-            $update_info = json_decode($response, true);
-            
-            if (isset($update_info['status']) && $update_info['status'] == 'update_available') {
-                return $update_info;
-            }
-        }
-        
-        return false;
-    }
-    
-    protected function downloadAndInstallUpdate($server_url, $module, $update_info) {
-        try {
-            // URL для загрузки обновления
-            $download_url = rtrim($server_url, '/') . '/download.php';
-            
-            $post_data = array(
-                'code' => $module['code'],
-                'version' => $update_info['version']
-            );
-            
-            // Инициализация cURL сессии
-            $curl = curl_init();
-            
-            // Настройка параметров cURL
-            curl_setopt_array($curl, array(
-                CURLOPT_URL => $download_url,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => http_build_query($post_data),
-                CURLOPT_HTTPHEADER => array(
-                    'Content-Type: application/x-www-form-urlencoded',
-                    'User-Agent: GDT-Updater/1.0'
-                ),
-                CURLOPT_TIMEOUT => 60, // Увеличенный таймаут для загрузки файлов
-                CURLOPT_CONNECTTIMEOUT => 10, // Таймаут на соединение
-                CURLOPT_SSL_VERIFYPEER => false, // Для разработки, в продакшне лучше установить true
-                CURLOPT_SSL_VERIFYHOST => 2,
-                CURLOPT_FAILONERROR => false // Не считать HTTP ошибки за сбой curl
-            ));
-            
-            // Выполнение запроса
-            $response = curl_exec($curl);
-            $error = curl_error($curl);
-            $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-            
-            // Закрытие cURL сессии
-            curl_close($curl);
-            
-            if ($error) {
-                // Логирование ошибки, если объект $log доступен
-                if (property_exists($this, 'log')) {
-                    $this->log->write('GDT Updater cURL error: ' . $error);
-                }
-                return $this->language->get('error_download');
-            }
-            
-            if ($http_code != 200) {
-                // Логирование ошибки HTTP, если объект $log доступен
-                if (property_exists($this, 'log')) {
-                    $this->log->write('GDT Updater HTTP error: ' . $http_code);
-                }
-                return $this->language->get('error_download');
-            }
-            
-            if (empty($response)) {
-                return $this->language->get('error_download');
-            }
-            
-            // Временный файл для загрузки
-            $temp_file = DIR_DOWNLOAD . 'update_' . $module['code'] . '_' . $update_info['version'] . '.zip';
-            
-            // Сохраняем во временный файл
-            file_put_contents($temp_file, $response);
-            
-            // Проверяем, является ли файл действительным архивом ZIP
-            $zip = new ZipArchive();
-            if ($zip->open($temp_file) !== true) {
-                @unlink($temp_file);
-                return $this->language->get('error_zip');
-            }
-            
-            // Извлекаем архив
-            $zip->extractTo(DIR_DOWNLOAD . 'update_extract_' . $module['code']);
-            $zip->close();
-            
-            $extract_dir = DIR_DOWNLOAD . 'update_extract_' . $module['code'];
-            
-            // Применяем обновление - копируем файлы в нужные директории
-            $this->copyDirectory($extract_dir, DIR_OPENCART);
-            
-            // Обновляем версию в файле хука
-            $hook_content = file_get_contents($module['file_path']);
-            $new_hook_content = preg_replace('/version:\s*([^\n]+)/i', 'version: ' . $update_info['version'], $hook_content);
-            file_put_contents($module['file_path'], $new_hook_content);
-            
-            // Очищаем временные файлы
-            $this->removeDirectory($extract_dir);
-            @unlink($temp_file);
-            
-            return true;
-        } catch (Exception $e) {
-            return $e->getMessage();
-        }
-    }
-    
-    protected function copyDirectory($source, $destination) {
-        if (is_dir($source)) {
-            if (!is_dir($destination)) {
-                mkdir($destination, 0777, true);
-            }
-            
-            $directory = opendir($source);
-            
-            while (($file = readdir($directory)) !== false) {
-                if ($file != '.' && $file != '..') {
-                    $this->copyDirectory($source . '/' . $file, $destination . '/' . $file);
-                }
-            }
-            
-            closedir($directory);
-        } elseif (file_exists($source)) {
-            copy($source, $destination);
-        }
-    }
-    
-    protected function removeDirectory($directory) {
-        if (is_dir($directory)) {
-            $objects = scandir($directory);
-            
-            foreach ($objects as $object) {
-                if ($object != '.' && $object != '..') {
-                    if (is_dir($directory . '/' . $object)) {
-                        $this->removeDirectory($directory . '/' . $object);
-                    } else {
-                        unlink($directory . '/' . $object);
-                    }
-                }
-            }
-            
-            rmdir($directory);
-        }
     }
     
     public function install() {
