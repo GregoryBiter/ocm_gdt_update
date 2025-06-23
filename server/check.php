@@ -5,12 +5,20 @@
  * Принимает POST-запрос с параметрами:
  * - code: код модуля
  * - version: текущая версия модуля
+ * - client_id: идентификатор клиента
+ * - api_key: ключ API для аутентификации
  * 
  * Возвращает JSON-ответ:
  * - status: 'up_to_date' или 'update_available'
  * - version: новая версия (если доступна)
  * - description: описание обновления (если доступно)
  */
+
+// Определяем константу для доступа к конфигурации
+define('GDT_SERVER', true);
+
+// Подключаем конфигурационный файл
+require_once __DIR__ . '/config.php';
 
 // Настройки
 header('Content-Type: application/json');
@@ -27,6 +35,22 @@ if (!isset($_POST['code']) || !isset($_POST['version'])) {
     exit;
 }
 
+// Проверяем параметры аутентификации
+if (!isset($_POST['client_id']) || !isset($_POST['api_key'])) {
+    echo json_encode(['error' => 'Authentication failed: Missing credentials']);
+    exit;
+}
+
+// Проверяем валидность API-ключа
+if (!validateApiKey($_POST['client_id'], $_POST['api_key'])) {
+    // Логируем неудачную попытку аутентификации
+    $client_ip = $_SERVER['REMOTE_ADDR'];
+    logInvalidApiKeyAttempt($_POST['api_key'], $client_ip, 'check.php');
+    
+    echo json_encode(['error' => 'Authentication failed: Invalid credentials']);
+    exit;
+}
+
 // Получаем параметры запроса
 $code = $_POST['code'];
 $current_version = $_POST['version'];
@@ -35,6 +59,12 @@ $current_version = $_POST['version'];
 $modules_dir = __DIR__ . '/modules/';
 
 // Проверяем, существует ли файл с информацией о модуле
+// проверяем на безопасность (защита от path traversal)
+if (preg_match('/\.\.|\/|\\\\/', $code)) {
+    echo json_encode(['error' => 'Invalid module code']);
+    exit;
+}
+
 $module_info_file = $modules_dir . $code . '/info.json';
 
 if (!file_exists($module_info_file)) {
