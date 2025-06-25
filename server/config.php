@@ -64,4 +64,11 @@ function logInvalidApiKeyAttempt($api_key, $ip, $endpoint) {
     
     // Записываем в лог
     file_put_contents($log_file, $log_message, FILE_APPEND);
+
+    // лог в консоль (для отладки)
+    if (defined('STDERR')) {
+        fwrite(STDERR, $log_message);
+    } else {
+        error_log($log_message);
+    }
 }

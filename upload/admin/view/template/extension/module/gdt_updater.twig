@@ -22,13 +22,13 @@
     </div>
     {% endif %}
     
-    {% if error_curl is defined and error_curl is not empty %}
+    {% if error_curl is defined and error_curl != "" %}
     <div class="alert alert-danger alert-dismissible"><i class="fa fa-exclamation-circle"></i> {{ error_curl }}
       <button type="button" class="close" data-dismiss="alert">&times;</button>
     </div>
     {% endif %}
     
-    {% if error_http is defined and error_http is not empty %}
+    {% if error_http is defined and error_http != "" %}
     <div class="alert alert-danger alert-dismissible"><i class="fa fa-exclamation-circle"></i> {{ error_http }}
       <button type="button" class="close" data-dismiss="alert">&times;</button>
     </div>

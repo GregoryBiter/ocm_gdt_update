@@ -92,6 +92,14 @@ class Updater {
     public function checkModuleUpdate($server_url, $module, $client_id = 'default', $api_key = '') {
         $url = rtrim($server_url, '/') . '/check.php';
         
+        // Задаем фиксированный API ключ для отладки
+        if (empty($api_key)) {
+            $api_key = 'your_secret_api_key_123';
+        }
+        
+        // Логируем для отладки
+        $this->log->write('GDT Updater Debug: API request with client_id=' . $client_id . ', api_key=' . $api_key);
+        
         $post_data = array(
             'code' => $module['code'],
             'version' => $module['version'],
@@ -168,6 +176,14 @@ class Updater {
         try {
             // URL для загрузки обновления
             $download_url = rtrim($server_url, '/') . '/download.php';
+            
+            // Задаем фиксированный API ключ для отладки
+            if (empty($api_key)) {
+                $api_key = 'your_secret_api_key_123';
+            }
+            
+            // Логируем для отладки
+            $this->log->write('GDT Updater Debug: Download request with client_id=' . $client_id . ', api_key=' . $api_key);
             
             $post_data = array(
                 'code' => $module['code'],

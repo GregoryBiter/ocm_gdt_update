@@ -44,6 +44,10 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
             unset($this->session->data['error']);
         }
         
+        // Инициализируем переменные ошибок
+        $data['error_curl'] = '';
+        $data['error_http'] = '';
+        
         $data['breadcrumbs'] = array();
         
         $data['breadcrumbs'][] = array(
@@ -94,7 +98,10 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
         // Проверяем обновления для модулей
         $data['module_updates'] = array();
         $data['module_backups'] = array();
-        $data['module_backups'] = array();
+        
+        // Инициализируем переменные для ошибок только если они действительно нужны
+        $data['error_curl'] = '';
+        $data['error_http'] = '';
         
         // Получаем URL сервера обновлений
         $server_url = $this->config->get('module_gdt_updater_server');
@@ -107,7 +114,12 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
         
         if (!empty($server_url) && !empty($data['installed_modules'])) {
             foreach ($data['installed_modules'] as $module) {
-                $update_info = $this->updater->checkModuleUpdate($server_url, $module);
+                // Получаем API-ключ и client_id из настроек
+                $client_id = $this->config->get('module_gdt_updater_client_id') ?: 'default';
+                $api_key = $this->config->get('module_gdt_updater_api_key') ?: 'your_secret_api_key_123';
+                
+                // Проверяем обновления с передачей API-ключа
+                $update_info = $this->updater->checkModuleUpdate($server_url, $module, $client_id, $api_key);
                 
                 // Проверяем наличие резервной копии для модуля
                 $backups = $this->updater->getModuleBackups($module['code']);
@@ -148,8 +160,14 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
                     } elseif ($update_info['error'] == 'http' && !empty($update_info['code'])) {
                         $data['error_http'] = sprintf($this->language->get('error_http'), $update_info['code']);
                     }
-                    // Прекращаем цикл при первой ошибке
-                    break;
+                    // Не прерываем цикл при ошибке, продолжаем проверять другие модули
+                    
+                    // Устанавливаем информацию о модуле по умолчанию
+                    $data['module_updates'][$module['code']] = array(
+                        'has_update' => false,
+                        'new_version' => '',
+                        'update_url' => ''
+                    );
                 } else {
                     // Добавляем информацию об обновлении
                     $data['module_updates'][$module['code']] = array(
@@ -216,10 +234,10 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
                     if (is_array($update_info) && isset($update_info['error'])) {
                         if ($update_info['error'] == 'curl' && !empty($update_info['message'])) {
                             $json['error'] = sprintf($this->language->get('error_curl'), $update_info['message']);
-                            break;
+                            // Не прерываем цикл, чтобы попробовать проверить другие модули
                         } elseif ($update_info['error'] == 'http' && !empty($update_info['code'])) {
                             $json['error'] = sprintf($this->language->get('error_http'), $update_info['code']);
-                            break;
+                            // Не прерываем цикл, чтобы попробовать проверить другие модули
                         }
                     } else if ($update_info) {
                         $json['modules'][] = array(
