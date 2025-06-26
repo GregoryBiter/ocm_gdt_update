@@ -315,14 +315,21 @@ class ModelExtensionModuleGdtUpdateServer extends Model {
     }
     
     /**
-     * Получить популярные модули
+     * Получение рекомендуемых модулей для установки
      */
-    public function getPopularModules($limit = 10) {
-        $query = $this->db->query("SELECT * FROM " . DB_PREFIX . "gdt_server_modules WHERE status = 1 ORDER BY downloads DESC, rating DESC LIMIT " . (int)$limit);
+    public function getFeaturedModules($limit = 20) {
+        // Получаем список установленных модулей из модуля updater
+        $installed_codes = array();
+        
+        $query = $this->db->query("SELECT * FROM " . DB_PREFIX . "gdt_server_modules WHERE status = 1 AND featured = 1 ORDER BY sort_order, name LIMIT " . (int)$limit);
         
         $modules = array();
         
         foreach ($query->rows as $module) {
+            $module['is_installed'] = in_array($module['code'], $installed_codes);
+            $module['download_url'] = $this->getDownloadUrl($module['code']);
+            $module['size'] = $this->formatFileSize($module['file_size']);
+            
             if ($module['dependencies']) {
                 $module['dependencies'] = json_decode($module['dependencies'], true);
             }
@@ -334,14 +341,24 @@ class ModelExtensionModuleGdtUpdateServer extends Model {
     }
     
     /**
-     * Получить рекомендуемые модули
+     * Получение популярных модулей для установки
      */
-    public function getFeaturedModules($limit = 10) {
-        $query = $this->db->query("SELECT * FROM " . DB_PREFIX . "gdt_server_modules WHERE status = 1 AND featured = 1 ORDER BY sort_order, name LIMIT " . (int)$limit);
+    public function getPopularModules($limit = 20) {
+        // Загружаем библиотеку updater для получения списка установленных модулей
+        require_once(DIR_SYSTEM . 'library/gbitstudio/updater/service/updater.php');
+        $updater = new \GbitStudio\Updater\Service\Updater($this->registry);
+        $installed_modules = $updater->getInstalledModules();
+        $installed_codes = array_column($installed_modules, 'code');
+        
+        $query = $this->db->query("SELECT * FROM " . DB_PREFIX . "gdt_server_modules WHERE status = 1 ORDER BY downloads DESC, rating DESC, name LIMIT " . (int)$limit);
         
         $modules = array();
         
         foreach ($query->rows as $module) {
+            $module['is_installed'] = in_array($module['code'], $installed_codes);
+            $module['download_url'] = $this->getDownloadUrl($module['code']);
+            $module['size'] = $this->formatFileSize($module['file_size']);
+            
             if ($module['dependencies']) {
                 $module['dependencies'] = json_decode($module['dependencies'], true);
             }
@@ -350,5 +367,361 @@ class ModelExtensionModuleGdtUpdateServer extends Model {
         }
         
         return $modules;
+    }
+    
+    /**
+     * Получение новых модулей для установки
+     */
+    public function getNewestModules($limit = 20) {
+        $installed_modules = $this->getInstalledModules();
+        $installed_codes = array_column($installed_modules, 'code');
+        
+        $query = $this->db->query("SELECT * FROM " . DB_PREFIX . "gdt_server_modules WHERE status = 1 ORDER BY date_added DESC, name LIMIT " . (int)$limit);
+        
+        $modules = array();
+        
+        foreach ($query->rows as $module) {
+            $module['is_installed'] = in_array($module['code'], $installed_codes);
+            $module['download_url'] = $this->getDownloadUrl($module['code']);
+            $module['size'] = $this->formatFileSize($module['file_size']);
+            
+            if ($module['dependencies']) {
+                $module['dependencies'] = json_decode($module['dependencies'], true);
+            }
+            
+            $modules[] = $module;
+        }
+        
+        return $modules;
+    }
+    
+    /**
+     * Поиск модулей
+     */
+    public function searchModules($query, $category = '', $sort = 'relevance', $price = '', $limit = 50) {
+        $installed_modules = $this->getInstalledModules();
+        $installed_codes = array_column($installed_modules, 'code');
+        
+        $sql = "SELECT * FROM " . DB_PREFIX . "gdt_server_modules WHERE status = 1";
+        
+        // Поиск по названию и описанию
+        if (!empty($query)) {
+            $sql .= " AND (name LIKE '%" . $this->db->escape($query) . "%' OR description LIKE '%" . $this->db->escape($query) . "%')";
+        }
+        
+        // Фильтр по категории
+        if (!empty($category)) {
+            $sql .= " AND category = '" . $this->db->escape($category) . "'";
+        }
+        
+        // Фильтр по цене
+        if ($price === 'free') {
+            $sql .= " AND price = 0";
+        } elseif ($price === 'paid') {
+            $sql .= " AND price > 0";
+        }
+        
+        // Сортировка
+        switch ($sort) {
+            case 'popularity':
+                $sql .= " ORDER BY downloads DESC, rating DESC";
+                break;
+            case 'rating':
+                $sql .= " ORDER BY rating DESC, reviews DESC";
+                break;
+            case 'date':
+                $sql .= " ORDER BY date_added DESC";
+                break;
+            case 'name':
+                $sql .= " ORDER BY name ASC";
+                break;
+            default: // relevance
+                $sql .= " ORDER BY featured DESC, downloads DESC, rating DESC";
+                break;
+        }
+        
+        $sql .= " LIMIT " . (int)$limit;
+        
+        $query_result = $this->db->query($sql);
+        
+        $modules = array();
+        
+        foreach ($query_result->rows as $module) {
+            $module['is_installed'] = in_array($module['code'], $installed_codes);
+            $module['download_url'] = $this->getDownloadUrl($module['code']);
+            $module['size'] = $this->formatFileSize($module['file_size']);
+            
+            if ($module['dependencies']) {
+                $module['dependencies'] = json_decode($module['dependencies'], true);
+            }
+            
+            $modules[] = $module;
+        }
+        
+        return $modules;
+    }
+    
+    /**
+     * Установка модуля
+     */
+    public function installModule($module_code, $download_url) {
+        try {
+            // Проверяем, не установлен ли уже модуль
+            $installed_modules = $this->getInstalledModules();
+            foreach ($installed_modules as $installed) {
+                if ($installed['code'] === $module_code) {
+                    return array(
+                        'success' => false,
+                        'error' => 'Модуль уже установлен'
+                    );
+                }
+            }
+            
+            // Получаем информацию о модуле
+            $module_info = $this->getModule($module_code);
+            if (!$module_info) {
+                return array(
+                    'success' => false,
+                    'error' => 'Модуль не найден на сервере'
+                );
+            }
+            
+            // Скачиваем модуль
+            $temp_file = $this->downloadModule($download_url);
+            if (!$temp_file) {
+                return array(
+                    'success' => false,
+                    'error' => 'Не удалось скачать модуль'
+                );
+            }
+            
+            // Извлекаем и устанавливаем модуль
+            $install_result = $this->extractAndInstallModule($temp_file, $module_code);
+            
+            // Удаляем временный файл
+            if (file_exists($temp_file)) {
+                unlink($temp_file);
+            }
+            
+            if ($install_result['success']) {
+                // Увеличиваем счетчик загрузок
+                $this->db->query("UPDATE " . DB_PREFIX . "gdt_server_modules SET downloads = downloads + 1 WHERE code = '" . $this->db->escape($module_code) . "'");
+                
+                return array(
+                    'success' => true,
+                    'message' => 'Модуль успешно установлен'
+                );
+            } else {
+                return $install_result;
+            }
+            
+        } catch (Exception $e) {
+            return array(
+                'success' => false,
+                'error' => 'Ошибка установки: ' . $e->getMessage()
+            );
+        }
+    }
+    
+    /**
+     * Получение информации о модуле
+     */
+    public function getModule($code) {
+        $query = $this->db->query("SELECT * FROM " . DB_PREFIX . "gdt_server_modules WHERE code = '" . $this->db->escape($code) . "' AND status = 1");
+        
+        if ($query->num_rows) {
+            $module = $query->row;
+            if ($module['dependencies']) {
+                $module['dependencies'] = json_decode($module['dependencies'], true);
+            }
+            return $module;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Получение URL для скачивания модуля
+     */
+    private function getDownloadUrl($module_code) {
+        // Это должен быть реальный URL вашего сервера обновлений
+        $server_url = $this->config->get('module_gdt_updater_server');
+        if (empty($server_url)) {
+            $server_url = 'https://your-server.com'; // замените на ваш сервер
+        }
+        
+        return rtrim($server_url, '/') . '/download/' . $module_code;
+    }
+    
+    /**
+     * Скачивание модуля
+     */
+    private function downloadModule($download_url) {
+        $temp_file = tempnam(sys_get_temp_dir(), 'gdt_module_');
+        
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $download_url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        
+        $data = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        if ($http_code === 200 && $data !== false) {
+            file_put_contents($temp_file, $data);
+            return $temp_file;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Извлечение и установка модуля
+     */
+    private function extractAndInstallModule($zip_file, $module_code) {
+        if (!extension_loaded('zip')) {
+            return array(
+                'success' => false,
+                'error' => 'PHP расширение ZIP не установлено'
+            );
+        }
+        
+        $zip = new ZipArchive;
+        if ($zip->open($zip_file) !== TRUE) {
+            return array(
+                'success' => false,
+                'error' => 'Не удалось открыть ZIP архив'
+            );
+        }
+        
+        // Создаем временную папку для извлечения
+        $temp_dir = sys_get_temp_dir() . '/gdt_module_' . $module_code . '_' . time();
+        mkdir($temp_dir, 0755, true);
+        
+        // Извлекаем архив
+        if (!$zip->extractTo($temp_dir)) {
+            $zip->close();
+            $this->removeDirectory($temp_dir);
+            return array(
+                'success' => false,
+                'error' => 'Не удалось извлечь архив'
+            );
+        }
+        
+        $zip->close();
+        
+        // Копируем файлы в нужные места
+        $copy_result = $this->copyModuleFiles($temp_dir, $module_code);
+        
+        // Удаляем временную папку
+        $this->removeDirectory($temp_dir);
+        
+        return $copy_result;
+    }
+    
+    /**
+     * Копирование файлов модуля
+     */
+    private function copyModuleFiles($source_dir, $module_code) {
+        $opencart_root = DIR_APPLICATION . '../';
+        
+        // Ищем папку upload в архиве
+        $upload_dir = $source_dir . '/upload';
+        if (!is_dir($upload_dir)) {
+            // Возможно структура другая, ищем прямо в корне
+            $upload_dir = $source_dir;
+        }
+        
+        try {
+            $this->copyDirectory($upload_dir, $opencart_root);
+            return array(
+                'success' => true,
+                'message' => 'Файлы модуля успешно скопированы'
+            );
+        } catch (Exception $e) {
+            return array(
+                'success' => false,
+                'error' => 'Ошибка копирования файлов: ' . $e->getMessage()
+            );
+        }
+    }
+    
+    /**
+     * Рекурсивное копирование директории
+     */
+    private function copyDirectory($src, $dst) {
+        if (!is_dir($src)) {
+            return false;
+        }
+        
+        if (!is_dir($dst)) {
+            mkdir($dst, 0755, true);
+        }
+        
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($src, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+        
+        foreach ($iterator as $item) {
+            $target = $dst . DIRECTORY_SEPARATOR . $iterator->getSubPathName();
+            
+            if ($item->isDir()) {
+                if (!is_dir($target)) {
+                    mkdir($target, 0755, true);
+                }
+            } else {
+                $target_dir = dirname($target);
+                if (!is_dir($target_dir)) {
+                    mkdir($target_dir, 0755, true);
+                }
+                copy($item, $target);
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Рекурсивное удаление директории
+     */
+    private function removeDirectory($dir) {
+        if (!is_dir($dir)) {
+            return false;
+        }
+        
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+        
+        foreach ($iterator as $file) {
+            if ($file->isDir()) {
+                rmdir($file->getPathname());
+            } else {
+                unlink($file->getPathname());
+            }
+        }
+        
+        rmdir($dir);
+        return true;
+    }
+    
+    /**
+     * Форматирование размера файла
+     */
+    private function formatFileSize($bytes) {
+        if ($bytes >= 1073741824) {
+            return number_format($bytes / 1073741824, 2) . ' GB';
+        } elseif ($bytes >= 1048576) {
+            return number_format($bytes / 1048576, 2) . ' MB';
+        } elseif ($bytes >= 1024) {
+            return number_format($bytes / 1024, 2) . ' KB';
+        } else {
+            return $bytes . ' bytes';
+        }
     }
 }
