@@ -65,29 +65,448 @@
     <!-- Список модулей -->
     <div class="panel panel-default">
       <div class="panel-heading">
-        <h3 class="panel-title"><i class="fa fa-list"></i> Установленные модули</h3>
+        <h3 class="panel-title"><i class="fa fa-th-large"></i> Установленные модули</h3>
       </div>
       <div class="panel-body">
-        <div id="modules-loading" class="text-center" style="padding: 20px;">
-          <i class="fa fa-spinner fa-spin fa-2x"></i>
-          <p>Загрузка модулей...</p>
-        </div>
-        <div id="modules-container" style="display: none;">
-          <!-- Контент будет загружен через AJAX -->
-        </div>
+        {% if modules is empty %}
+          <div class="no-modules">
+            <i class="fa fa-puzzle-piece"></i>
+            <h3>Модули не найдены</h3>
+            <p>Установленные модули отсутствуют или не могут быть загружены</p>
+          </div>
+        {% else %}
+          <div class="modules-list">
+            <div class="modules-list-header">
+              <i class="fa fa-th-list"></i>Управление модулями ({{ modules|length }})
+            </div>
+            
+            {% for module in modules %}
+              <div class="module-item {{ module.has_update ? 'has-update' : 'up-to-date' }}">
+                
+                {% if module.has_update %}
+                  <div class="update-indicator">Новая версия</div>
+                {% endif %}
+                
+                <!-- Колонка 1: Название + ссылки действий -->
+                <div class="module-column-1">
+                  <h3 class="module-title">
+                    <i class="fa fa-puzzle-piece"></i>{{ module.name }}
+                  </h3>
+                  
+                  <!-- Ссылки действий -->
+                  <div class="module-actions-links">
+                    
+                    <!-- Ссылка на настройки (если есть) -->
+                    {% if module.settings_url %}
+                      <a href="{{ module.settings_url }}" class="action-link settings-link">
+                        <i class="fa fa-cog"></i> Настройки
+                      </a>
+                      <span class="action-separator">|</span>
+                    {% endif %}
+                    
+                    <!-- Ссылка на обновление или актуально -->
+                    {% if module.has_update %}
+                      <a href="#" class="action-link update-link update-module" data-url="{{ module.update_url }}" data-code="{{ module.code }}">
+                        <i class="fa fa-download"></i> Обновить до {{ module.new_version }}
+                      </a>
+                    {% else %}
+                      <span class="action-link" style="color: #28a745;">
+                        <i class="fa fa-check"></i> Актуально
+                      </span>
+                    {% endif %}
+                    
+                    <!-- Ссылка на восстановление -->
+                    {% if module.has_backup %}
+                      <span class="action-separator">|</span>
+                      <a href="#" class="action-link restore-link restore-module" data-url="{{ module.restore_url }}" data-code="{{ module.code }}">
+                        <i class="fa fa-undo"></i> Восстановить
+                      </a>
+                    {% endif %}
+                    
+                  </div>
+                </div>
+                
+                <!-- Колонка 2: Описание, версия, автор -->
+                <div class="module-column-2">
+                  <p class="module-description">{{ module.description }}</p>
+                  
+                  <div class="module-meta">
+                    <!-- Версия и код в одной строке -->
+                    <div class="meta-item">
+                      <span class="meta-label">Версия:</span>
+                      <span class="version-current">{{ module.version }}</span>
+                      {% if module.has_update %}
+                        → <span class="version-new">{{ module.new_version }}</span>
+                      {% endif %}
+                      | <span class="meta-label">Код:</span> <span>{{ module.code }}</span>
+                    </div>
+                    
+                    <!-- Автор -->
+                    {% if module.author %}
+                      <div class="meta-item">
+                        <span class="meta-label">Автор:</span>
+                        {% if module.author_url %}
+                          <a href="{{ module.author_url }}" class="module-author" target="_blank">{{ module.author }}</a>
+                        {% else %}
+                          <span>{{ module.author }}</span>
+                        {% endif %}
+                      </div>
+                    {% endif %}
+                  </div>
+                </div>
+                
+                <!-- Колонка 3: Автообновления -->
+                <div class="module-column-3">
+                  <div class="auto-update-section">
+                    <label class="auto-update-label">Автообновления</label>
+                    <label class="toggle-switch">
+                      <input type="checkbox" class="auto-update-toggle" data-code="{{ module.code }}"{{ module.auto_update ? ' checked' : '' }}>
+                      <span class="slider"></span>
+                    </label>
+                    <div class="auto-update-status">
+                      {{ module.auto_update ? 'Включены' : 'Отключены' }}
+                    </div>
+                  </div>
+                </div>
+                
+              </div>
+            {% endfor %}
+            
+          </div>
+        {% endif %}
         <div id="update-results"></div>
       </div>
     </div>
   </div>
 </div>
 
+<style>
+/* WordPress-подобные стили для списка модулей */
+.modules-list {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-top: 20px;
+}
+
+.modules-list-header {
+    background: #f8f9fa;
+    border-bottom: 1px solid #ddd;
+    padding: 15px 20px;
+    font-weight: 600;
+    color: #333;
+    display: flex;
+    align-items: center;
+}
+
+.modules-list-header i {
+    margin-right: 8px;
+    color: #007cba;
+}
+
+.module-item {
+    border-bottom: 1px solid #eee;
+    padding: 20px;
+    transition: background-color 0.2s ease;
+    position: relative;
+    display: grid;
+    grid-template-columns: 300px 1fr 200px;
+    gap: 30px;
+    align-items: start;
+}
+
+.module-item:last-child {
+    border-bottom: none;
+}
+
+.module-item:hover {
+    background-color: #f8f9fa;
+}
+
+.module-item.has-update {
+    border-left: 4px solid #dc3545;
+}
+
+.module-item.up-to-date {
+    border-left: 4px solid #28a745;
+}
+
+.module-column-1 {
+    display: flex;
+    flex-direction: column;
+}
+
+.module-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 12px 0;
+    color: #333;
+    display: flex;
+    align-items: center;
+}
+
+.module-title i {
+    margin-right: 8px;
+    color: #007cba;
+    font-size: 16px;
+}
+
+.module-actions-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.action-link {
+    color: #007cba;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 2px 0;
+    border-bottom: 1px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.action-link:hover {
+    color: #005a87;
+    border-bottom-color: #005a87;
+    text-decoration: none;
+}
+
+.action-link.update-link {
+    color: #dc3545;
+    font-weight: 600;
+}
+
+.action-link.update-link:hover {
+    color: #b02a37;
+    border-bottom-color: #b02a37;
+}
+
+.action-link.restore-link {
+    color: #fd7e14;
+}
+
+.action-link.restore-link:hover {
+    color: #e55100;
+    border-bottom-color: #e55100;
+}
+
+.action-separator {
+    color: #ccc;
+    margin: 0 2px;
+}
+
+.module-column-2 {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.module-description {
+    color: #666;
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 0 0 12px 0;
+}
+
+.module-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+    color: #666;
+}
+
+.meta-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.meta-label {
+    font-weight: 600;
+    color: #333;
+    min-width: 60px;
+}
+
+.version-current {
+    color: #666;
+    background: #f1f3f4;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+}
+
+.version-new {
+    color: #d63384;
+    background: #fdf2f8;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.module-author {
+    color: #007cba;
+    text-decoration: none;
+}
+
+.module-author:hover {
+    text-decoration: underline;
+}
+
+.module-column-3 {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.auto-update-section {
+    width: 100%;
+}
+
+.auto-update-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 24px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #007cba;
+}
+
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+
+.auto-update-status {
+    font-size: 11px;
+    color: #666;
+    margin-top: 6px;
+}
+
+.update-indicator {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background: #dc3545;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.no-modules {
+    text-align: center;
+    padding: 60px 20px;
+    color: #666;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-top: 20px;
+}
+
+.no-modules i {
+    font-size: 48px;
+    color: #ddd;
+    margin-bottom: 15px;
+}
+
+.no-modules h3 {
+    color: #666;
+    margin-bottom: 8px;
+    font-size: 18px;
+}
+
+.no-modules p {
+    color: #999;
+    font-size: 14px;
+    margin: 0;
+}
+
+/* Адаптивность */
+@media (max-width: 992px) {
+    .module-item {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .module-column-3 {
+        align-items: flex-start;
+        text-align: left;
+    }
+}
+
+@media (max-width: 768px) {
+    .module-actions-links {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .action-separator {
+        display: none;
+    }
+    
+    .update-indicator {
+        position: static;
+        align-self: flex-start;
+        margin-bottom: 10px;
+    }
+}
+</style>
+
 <script type="text/javascript"><!--
 // URL-адреса для AJAX запросов
 var ajaxUrls = {
     settings: '{{ settings_url }}',
     saveSettings: '{{ save_settings_url }}',
-    modules: '{{ modules_url }}',
-    checkUpdates: '{{ check_updates }}'
+    checkUpdates: '{{ check_updates }}',
+    toggleAutoUpdate: '{{ toggle_auto_update_url }}'
 };
 
 var userToken = '{{ user_token }}';
@@ -140,7 +559,10 @@ function saveSettings() {
             if (json.success) {
                 showAlert('success', json.success);
                 $('#modal-settings').modal('hide');
-                loadModules(); // Перезагружаем модули после сохранения настроек
+                // Перезагружаем страницу после сохранения настроек
+                setTimeout(function() {
+                    location.reload();
+                }, 1000);
             } else if (json.error) {
                 showAlert('danger', json.error);
             }
@@ -151,88 +573,8 @@ function saveSettings() {
     });
 }
 
-// Загрузка модулей
-function loadModules() {
-    $('#modules-loading').show();
-    $('#modules-container').hide();
-    
-    $.ajax({
-        url: ajaxUrls.modules,
-        dataType: 'json',
-        success: function(json) {
-            $('#modules-loading').hide();
-            
-            if (json.error) {
-                $('#modules-container').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> ' + json.error + '</div>');
-            } else if (json.modules && json.modules.length > 0) {
-                var html = '<table class="table table-bordered table-hover">';
-                html += '<thead>';
-                html += '<tr>';
-                html += '<td>Название</td>';
-                html += '<td>Описание</td>';
-                html += '<td>Текущая версия</td>';
-                html += '<td>Новая версия</td>';
-                html += '<td class="text-right">Действия</td>';
-                html += '</tr>';
-                html += '</thead>';
-                html += '<tbody>';
-                
-                for (var i = 0; i < json.modules.length; i++) {
-                    var module = json.modules[i];
-                    html += '<tr>';
-                    html += '<td>' + module.name + '</td>';
-                    html += '<td>' + module.description + '</td>';
-                    html += '<td>' + module.version + '</td>';
-                    html += '<td>';
-                    if (module.has_update) {
-                        html += module.new_version;
-                    } else {
-                        html += '<span class="text-success">Актуальная</span>';
-                    }
-                    html += '</td>';
-                    html += '<td class="text-right">';
-                    if (module.has_update) {
-                        html += '<a href="' + module.update_url + '" class="btn btn-primary btn-sm update-module" data-code="' + module.code + '"><i class="fa fa-refresh"></i> Обновить</a> ';
-                    } else {
-                        html += '<button class="btn btn-default btn-sm" disabled="disabled"><i class="fa fa-check"></i> Актуально</button> ';
-                    }
-                    if (module.has_backup) {
-                        html += '<a href="' + module.restore_url + '" class="btn btn-warning btn-sm restore-module" data-code="' + module.code + '"><i class="fa fa-undo"></i> Восстановить</a>';
-                    }
-                    html += '</td>';
-                    html += '</tr>';
-                }
-                
-                html += '</tbody>';
-                html += '</table>';
-                
-                $('#modules-container').html(html);
-                
-                // Показываем предупреждения об ошибках, если есть
-                if (json.error_curl) {
-                    showAlert('danger', json.error_curl);
-                }
-                if (json.error_http) {
-                    showAlert('danger', json.error_http);
-                }
-            } else {
-                $('#modules-container').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> Модули не найдены</div>');
-            }
-            
-            $('#modules-container').show();
-        },
-        error: function() {
-            $('#modules-loading').hide();
-            $('#modules-container').html('<div class="alert alert-danger"><i class="fa fa-exclamation-circle"></i> Ошибка загрузки модулей</div>').show();
-        }
-    });
-}
-
 // Обработчики событий
 $(document).ready(function() {
-    // Загружаем модули при загрузке страницы
-    loadModules();
-    
     // Кнопка настроек
     $('#button-settings').on('click', function() {
         loadSettings();
@@ -262,9 +604,9 @@ $(document).ready(function() {
                     showAlert('danger', json.error);
                 } else if (json.success) {
                     showAlert('success', json.success);
-                    // Перезагружаем модули
+                    // Перезагружаем страницу
                     setTimeout(function() {
-                        loadModules();
+                        location.reload();
                     }, 1000);
                 }
             },
@@ -279,29 +621,30 @@ $(document).ready(function() {
         e.preventDefault();
         
         var element = this;
-        var url = $(element).attr('href');
+        var url = $(element).data('url');
+        var originalText = $(element).html();
         
         $.ajax({
             url: url,
             dataType: 'json',
             beforeSend: function() {
-                $(element).html('<i class="fa fa-spinner fa-spin"></i> Обновление...').prop('disabled', true);
+                $(element).html('<i class="fa fa-spinner fa-spin"></i> Обновление...').addClass('disabled');
             },
             success: function(json) {
                 if (json.error) {
                     showAlert('danger', json.error);
-                    $(element).html('<i class="fa fa-refresh"></i> Обновить').prop('disabled', false);
+                    $(element).html(originalText).removeClass('disabled');
                 } else if (json.success) {
                     showAlert('success', json.success);
-                    // Перезагружаем модули после успешного обновления
+                    // Перезагружаем страницу после успешного обновления
                     setTimeout(function() {
-                        loadModules();
+                        location.reload();
                     }, 2000);
                 }
             },
             error: function(xhr, ajaxOptions, thrownError) {
                 showAlert('danger', 'Ошибка обновления: ' + thrownError);
-                $(element).html('<i class="fa fa-refresh"></i> Обновить').prop('disabled', false);
+                $(element).html(originalText).removeClass('disabled');
             }
         });
     });
@@ -315,29 +658,72 @@ $(document).ready(function() {
         }
         
         var element = this;
-        var url = $(element).attr('href');
+        var url = $(element).data('url');
+        var originalText = $(element).html();
         
         $.ajax({
             url: url,
             dataType: 'json',
             beforeSend: function() {
-                $(element).html('<i class="fa fa-spinner fa-spin"></i> Восстановление...').prop('disabled', true);
+                $(element).html('<i class="fa fa-spinner fa-spin"></i> Восстановление...').addClass('disabled');
             },
             success: function(json) {
                 if (json.error) {
                     showAlert('danger', json.error);
-                    $(element).html('<i class="fa fa-undo"></i> Восстановить').prop('disabled', false);
+                    $(element).html(originalText).removeClass('disabled');
                 } else if (json.success) {
                     showAlert('success', json.success);
-                    // Перезагружаем модули после успешного восстановления
+                    // Перезагружаем страницу после успешного восстановления
                     setTimeout(function() {
-                        loadModules();
+                        location.reload();
                     }, 2000);
                 }
             },
             error: function(xhr, ajaxOptions, thrownError) {
                 showAlert('danger', 'Ошибка восстановления: ' + thrownError);
-                $(element).html('<i class="fa fa-undo"></i> Восстановить').prop('disabled', false);
+                $(element).html(originalText).removeClass('disabled');
+            }
+        });
+    });
+    
+    // Переключение автообновлений
+    $(document).on('change', '.auto-update-toggle', function() {
+        var element = this;
+        var moduleCode = $(element).data('code');
+        var isEnabled = $(element).is(':checked');
+        var statusElement = $(element).closest('.auto-update-section').find('.auto-update-status');
+        
+        $.ajax({
+            url: ajaxUrls.toggleAutoUpdate,
+            type: 'POST',
+            data: {
+                module_code: moduleCode,
+                auto_update: isEnabled ? 1 : 0,
+                user_token: userToken
+            },
+            dataType: 'json',
+            beforeSend: function() {
+                $(element).prop('disabled', true);
+                statusElement.text('Сохранение...');
+            },
+            success: function(json) {
+                $(element).prop('disabled', false);
+                if (json.success) {
+                    statusElement.text(isEnabled ? 'Включены' : 'Отключены');
+                    showAlert('success', 'Настройки автообновления сохранены');
+                } else if (json.error) {
+                    // Возвращаем переключатель в исходное состояние
+                    $(element).prop('checked', !isEnabled);
+                    statusElement.text(!isEnabled ? 'Включены' : 'Отключены');
+                    showAlert('danger', json.error);
+                }
+            },
+            error: function(xhr, ajaxOptions, thrownError) {
+                $(element).prop('disabled', false);
+                // Возвращаем переключатель в исходное состояние
+                $(element).prop('checked', !isEnabled);
+                statusElement.text(!isEnabled ? 'Включены' : 'Отключены');
+                showAlert('danger', 'Ошибка сохранения настроек: ' + thrownError);
             }
         });
     });

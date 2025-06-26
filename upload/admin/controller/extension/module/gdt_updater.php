@@ -39,8 +39,8 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
         // URL-адреса для AJAX запросов
         $data['settings_url'] = $this->url->link('extension/module/gdt_updater/settings', 'user_token=' . $this->session->data['user_token'], true);
         $data['save_settings_url'] = $this->url->link('extension/module/gdt_updater/saveSettings', 'user_token=' . $this->session->data['user_token'], true);
-        $data['modules_url'] = $this->url->link('extension/module/gdt_updater/getModules', 'user_token=' . $this->session->data['user_token'], true);
         $data['check_updates'] = $this->url->link('extension/module/gdt_updater/check', 'user_token=' . $this->session->data['user_token'], true);
+        $data['toggle_auto_update_url'] = $this->url->link('extension/module/gdt_updater/toggleAutoUpdate', 'user_token=' . $this->session->data['user_token'], true);
         $data['cancel'] = $this->url->link('marketplace/extension', 'user_token=' . $this->session->data['user_token'] . '&type=module', true);
 
         $decode = [
@@ -59,11 +59,89 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
         
         $data['user_token'] = $this->session->data['user_token'];
         
+        // Получаем данные модулей для серверного рендеринга
+        $data['modules'] = $this->getModulesData();
+        
         $data['header'] = $this->load->controller('common/header');
         $data['column_left'] = $this->load->controller('common/column_left');
         $data['footer'] = $this->load->controller('common/footer');
         
         $this->response->setOutput($this->load->view('extension/module/gdt_updater', $data));
+    }
+    
+    /**
+     * Получение данных модулей для серверного рендеринга
+     */
+    private function getModulesData() {
+        // Получаем список установленных модулей
+        $installed_modules = $this->updater->getInstalledModules();
+        
+        if (empty($installed_modules)) {
+            return array();
+        }
+        
+        $modules = array();
+        
+        // Получаем URL сервера обновлений
+        $server_url = $this->config->get('module_gdt_updater_server');
+        
+        if (empty($server_url)) {
+            $server_url = HTTP_SERVER . 'ocm_gdt_update/server';
+        }
+        
+        foreach ($installed_modules as $module) {
+            $module_data = array(
+                'name' => $module['name'],
+                'description' => $module['description'] ?? 'Описание отсутствует',
+                'code' => $module['code'],
+                'version' => $module['version'],
+                'author' => $module['author'] ?? '',
+                'author_url' => $module['author_url'] ?? '',
+                'has_update' => false,
+                'new_version' => '',
+                'update_url' => '',
+                'has_backup' => false,
+                'restore_url' => '',
+                'settings_url' => '',
+                'auto_update' => false
+            );
+            
+            // Ссылка на настройки модуля (если есть)
+            if (!empty($module['code'])) {
+                $settings_route = 'extension/module/' . $module['code'];
+                $module_data['settings_url'] = $this->url->link($settings_route, 'user_token=' . $this->session->data['user_token'], true);
+            }
+            
+            if (!empty($server_url)) {
+                // Получаем API-ключ и client_id
+                $client_id = $this->config->get('module_gdt_updater_client_id') ?: 'default';
+                $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
+                
+                // Проверяем обновления
+                $update_info = $this->updater->checkModuleUpdate($server_url, $module, $client_id, $api_key);
+                
+                if ($update_info && !isset($update_info['error'])) {
+                    $module_data['has_update'] = true;
+                    $module_data['new_version'] = $update_info['version'];
+                    $module_data['update_url'] = $this->url->link('extension/module/gdt_updater/update', 'user_token=' . $this->session->data['user_token'] . '&code=' . $module['code'], true);
+                }
+                
+                // Проверяем наличие резервной копии
+                $backups = $this->updater->getModuleBackups($module['code']);
+                if (!empty($backups)) {
+                    $module_data['has_backup'] = true;
+                    $backup_dir = $backups[0]['dir'];
+                    $module_data['restore_url'] = $this->url->link('extension/module/gdt_updater/restore', 'user_token=' . $this->session->data['user_token'] . '&code=' . $module['code'] . '&backup=' . $backup_dir, true);
+                }
+            }
+            
+            // Получаем настройки автообновления (можно добавить в конфиг)
+            $module_data['auto_update'] = $this->config->get('module_gdt_updater_auto_' . $module['code']) ? true : false;
+            
+            $modules[] = $module_data;
+        }
+        
+        return $modules;
     }
     
     /**
@@ -402,5 +480,31 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
     public function uninstall() {
         $this->load->model('setting/setting');
         $this->model_setting_setting->deleteSetting('module_gdt_updater');
+    }
+    
+    /**
+     * Переключение автообновления для модуля
+     */
+    public function toggleAutoUpdate() {
+        $this->load->language('extension/module/gdt_updater');
+        $this->load->model('setting/setting');
+        
+        $json = array();
+        
+        if (($this->request->server['REQUEST_METHOD'] == 'POST') && isset($this->request->post['module_code'])) {
+            $module_code = $this->request->post['module_code'];
+            $auto_update = isset($this->request->post['auto_update']) ? (int)$this->request->post['auto_update'] : 0;
+            
+            // Сохраняем настройку автообновления для конкретного модуля
+            $setting_key = 'module_gdt_updater_auto_' . $module_code;
+            $this->model_setting_setting->editSetting('module_gdt_updater', array($setting_key => $auto_update));
+            
+            $json['success'] = 'Настройки автообновления сохранены';
+        } else {
+            $json['error'] = 'Неверные параметры запроса';
+        }
+        
+        $this->response->addHeader('Content-Type: application/json');
+        $this->response->setOutput(json_encode($json));
     }
 }

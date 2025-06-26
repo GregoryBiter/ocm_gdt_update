@@ -7,6 +7,7 @@
         "admin/view/template/extension/module/gdt_updater.twig",
         "admin/view/template/extension/module/gdt_updater_backups.twig",
         "system/hook/gdt_updater.php",
+        "system/hook/gdt_updater_copy.php",
         "system/library/gbitstudio/updater/service/updater.php"
     ]
 }

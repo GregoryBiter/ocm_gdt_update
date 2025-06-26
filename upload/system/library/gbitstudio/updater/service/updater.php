@@ -41,18 +41,24 @@ class Updater {
             foreach ($hook_files as $file) {
                 $content = file_get_contents($file);
                 
+                // Получаем код модуля из имени файла (без расширения .php)
+                $filename = basename($file, '.php');
+                
                 // Извлекаем информацию о модуле из комментариев
                 preg_match('/name:\s*([^\n]+)/i', $content, $name_match);
                 preg_match('/description:\s*([^\n]+)/i', $content, $description_match);
-                preg_match('/code:\s*([^\n]+)/i', $content, $code_match);
                 preg_match('/version:\s*([^\n]+)/i', $content, $version_match);
+                preg_match('/author:\s*([^\n]+)/i', $content, $author_match);
+                preg_match('/author_url:\s*([^\n]+)/i', $content, $author_url_match);
                 
-                if (isset($name_match[1]) && isset($code_match[1]) && isset($version_match[1])) {
+                if (isset($name_match[1]) && isset($version_match[1])) {
                     $modules[] = array(
                         'name' => trim($name_match[1]),
                         'description' => isset($description_match[1]) ? trim($description_match[1]) : '',
-                        'code' => trim($code_match[1]),
+                        'code' => $filename, // Используем имя файла как код модуля
                         'version' => trim($version_match[1]),
+                        'author' => isset($author_match[1]) ? trim($author_match[1]) : '',
+                        'author_url' => isset($author_url_match[1]) ? trim($author_url_match[1]) : '',
                         'file_path' => $file
                     );
                 }
