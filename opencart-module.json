@@ -17,7 +17,6 @@
         "catalog/controller/gdt_update_server/modules.php",
         "catalog/model/extension/module/gdt_update_server.php",
         "system/hook/gdt_updater.php",
-        "system/hook/gdt_updater_copy.php",
         "system/library/gbitstudio/updater/service/updater.php"
     ]
 }

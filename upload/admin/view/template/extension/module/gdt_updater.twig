@@ -146,13 +146,13 @@
                 <div class="module-column-3">
                   <div class="auto-update-section">
                     <label class="auto-update-label">Автообновления</label>
-                    <label class="toggle-switch">
-                      <input type="checkbox" class="auto-update-toggle" data-code="{{ module.code }}"{{ module.auto_update ? ' checked' : '' }}>
-                      <span class="slider"></span>
-                    </label>
-                    <div class="auto-update-status">
-                      {{ module.auto_update ? 'Включены' : 'Отключены' }}
-                    </div>
+                    <a href="#" class="auto-update-link" data-code="{{ module.code }}" data-current="{{ module.auto_update ? '1' : '0' }}">
+                      {% if module.auto_update %}
+                        <i class="fa fa-toggle-on"></i> Включены
+                      {% else %}
+                        <i class="fa fa-toggle-off"></i> Отключены
+                      {% endif %}
+                    </a>
                   </div>
                 </div>
                 
@@ -354,55 +354,32 @@
     display: block;
 }
 
-.toggle-switch {
-    position: relative;
+.auto-update-link {
+    color: #007cba;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    /* padding: 6px 12px; */
+    /* border: 1px solid #007cba; */
+    border-radius: 4px;
     display: inline-block;
-    width: 50px;
-    height: 24px;
+    transition: all 0.2s ease;
+    text-align: center;
 }
 
-.toggle-switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
+.auto-update-link:hover {
+    background: #007cba;
+    color: #fff;
+    text-decoration: none;
 }
 
-.slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: #ccc;
-    transition: .4s;
-    border-radius: 24px;
+.auto-update-link i {
+    margin-right: 5px;
 }
 
-.slider:before {
-    position: absolute;
-    content: "";
-    height: 18px;
-    width: 18px;
-    left: 3px;
-    bottom: 3px;
-    background-color: white;
-    transition: .4s;
-    border-radius: 50%;
-}
-
-input:checked + .slider {
-    background-color: #007cba;
-}
-
-input:checked + .slider:before {
-    transform: translateX(26px);
-}
-
-.auto-update-status {
-    font-size: 11px;
-    color: #666;
-    margin-top: 6px;
+.auto-update-link.disabled {
+    opacity: 0.6;
+    pointer-events: none;
 }
 
 .update-indicator {
@@ -627,42 +604,45 @@ $(document).ready(function() {
     
     // Восстановление модуля
     // Переключение автообновлений
-    $(document).on('change', '.auto-update-toggle', function() {
+    $(document).on('click', '.auto-update-link', function(e) {
+        e.preventDefault();
+        
         var element = this;
         var moduleCode = $(element).data('code');
-        var isEnabled = $(element).is(':checked');
-        var statusElement = $(element).closest('.auto-update-section').find('.auto-update-status');
+        var currentState = $(element).data('current');
+        var newState = currentState === '1' ? '0' : '1';
+        var originalHtml = $(element).html();
         
         $.ajax({
             url: ajaxUrls.toggleAutoUpdate,
             type: 'POST',
             data: {
                 module_code: moduleCode,
-                auto_update: isEnabled ? 1 : 0,
+                auto_update: newState,
                 user_token: userToken
             },
             dataType: 'json',
             beforeSend: function() {
-                $(element).prop('disabled', true);
-                statusElement.text('Сохранение...');
+                $(element).addClass('disabled').html('<i class="fa fa-spinner fa-spin"></i> Сохранение...');
             },
             success: function(json) {
-                $(element).prop('disabled', false);
+                $(element).removeClass('disabled');
                 if (json.success) {
-                    statusElement.text(isEnabled ? 'Включены' : 'Отключены');
+                    // Обновляем состояние ссылки
+                    $(element).data('current', newState);
+                    if (newState === '1') {
+                        $(element).html('<i class="fa fa-toggle-on"></i> Включены');
+                    } else {
+                        $(element).html('<i class="fa fa-toggle-off"></i> Отключены');
+                    }
                     showAlert('success', 'Настройки автообновления сохранены');
                 } else if (json.error) {
-                    // Возвращаем переключатель в исходное состояние
-                    $(element).prop('checked', !isEnabled);
-                    statusElement.text(!isEnabled ? 'Включены' : 'Отключены');
+                    $(element).html(originalHtml);
                     showAlert('danger', json.error);
                 }
             },
             error: function(xhr, ajaxOptions, thrownError) {
-                $(element).prop('disabled', false);
-                // Возвращаем переключатель в исходное состояние
-                $(element).prop('checked', !isEnabled);
-                statusElement.text(!isEnabled ? 'Включены' : 'Отключены');
+                $(element).removeClass('disabled').html(originalHtml);
                 showAlert('danger', 'Ошибка сохранения настроек: ' + thrownError);
             }
         });
