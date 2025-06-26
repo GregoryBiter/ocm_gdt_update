@@ -1,13 +1,62 @@
 {
+    "name": "GDT Update System",
+    "description": "Comprehensive module update system for OpenCart with WordPress-like interface and dedicated update server",
+    "version": "2.0.0",
+    "author": "GBit Studio", 
+    "author_url": "https://gbitstudio.com",
+    "opencart_version": "3.x",
+    "license": "MIT",
+    "modules": [
+        {
+            "name": "GDT Updater",
+            "code": "gdt_updater", 
+            "description": "Client module for checking and installing updates with modern WordPress-like interface",
+            "type": "module"
+        },
+        {
+            "name": "GDT Update Server",
+            "code": "gdt_update_server",
+            "description": "Server module for distributing updates to client sites with API endpoints", 
+            "type": "module"
+        }
+    ],
+    "features": [
+        "Modern WordPress-like interface",
+        "Server-side rendering with AJAX updates", 
+        "Automatic module detection",
+        "Backup and restore functionality",
+        "Auto-update toggle",
+        "Dedicated update server module",
+        "API for external integration",
+        "Multi-language support (EN/RU/UA)",
+        "Security with API keys and IP filtering",
+        "Automatic module metadata parsing",
+        "Upload and manage modules via admin panel"
+    ],
     "files": [
+        "admin/controller/extension/module/gdt_update_server.php",
         "admin/controller/extension/module/gdt_updater.php",
+        "admin/language/en-gb/extension/module/gdt_update_server.php",
         "admin/language/en-gb/extension/module/gdt_updater.php",
+        "admin/language/ru-ru/extension/module/gdt_update_server.php",
         "admin/language/ru-ru/extension/module/gdt_updater.php",
+        "admin/language/uk-ua/extension/module/gdt_update_server.php",
         "admin/language/uk-ua/extension/module/gdt_updater.php",
+        "admin/view/template/extension/module/gdt_update_server.twig",
+        "admin/view/template/extension/module/gdt_update_server_modules.twig",
         "admin/view/template/extension/module/gdt_updater.twig",
         "admin/view/template/extension/module/gdt_updater_backups.twig",
+        "catalog/controller/gdt_update_server/check.php",
+        "catalog/controller/gdt_update_server/download.php",
+        "catalog/controller/gdt_update_server/modules.php",
         "system/hook/gdt_updater.php",
         "system/hook/gdt_updater_copy.php",
         "system/library/gbitstudio/updater/service/updater.php"
-    ]
+    ],
+    "requirements": {
+        "opencart": "3.x",
+        "php": "7.2+",
+        "extensions": ["curl", "zip"],
+        "permissions": ["system/storage write access"]
+    }
 }

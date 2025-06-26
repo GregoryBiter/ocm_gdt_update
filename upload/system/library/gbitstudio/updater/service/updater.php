@@ -96,7 +96,7 @@ class Updater {
      * @return array|bool
      */
     public function checkModuleUpdate($server_url, $module, $client_id = 'default', $api_key = '') {
-        $url = rtrim($server_url, '/') . '/check.php';
+        $url = rtrim($server_url, '/') . '/index.php?route=gdt_update_server/check';
         
         // Задаем фиксированный API ключ для отладки
         if (empty($api_key)) {
@@ -181,7 +181,7 @@ class Updater {
     public function downloadAndInstallUpdate($server_url, $module, $update_info, $client_id = 'default', $api_key = '') {
         try {
             // URL для загрузки обновления
-            $download_url = rtrim($server_url, '/') . '/download.php';
+            $download_url = rtrim($server_url, '/') . '/index.php?route=gdt_update_server/download';
             
             // Задаем фиксированный API ключ для отладки
             if (empty($api_key)) {

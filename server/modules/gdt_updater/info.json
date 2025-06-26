@@ -1,7 +1,10 @@
 {
-    "name": "GDT Updater",
     "code": "gdt_updater",
+    "name": "GDT Updater",
+    "description": "Advanced module update system for OpenCart with WordPress-like interface",
     "version": "1.0.2",
-    "description": "Обновление GDT Updater с исправлением ошибок",
-    "file": "gdt_updater_1.0.1.zip"
+    "author": "GBit Studio",
+    "author_url": "https://gbitstudio.com",
+    "upload_date": "2025-06-26 12:00:00",
+    "file": "gdt_updater_1.0.2.zip"
 }
