@@ -179,7 +179,10 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
             }
         }
         
-        $data['check_updates'] = $this->url->link('extension/module/gdt_updater/check', 'user_token=' . $this->session->data['user_token'], true);
+        //$data['check_updates'] = $this->url->link('extension/module/gdt_updater/check', 'user_token=' . $this->session->data['user_token'], true);
+
+        $data['check_updates'] = html_entity_decode($this->url->link('extension/module/gdt_updater/check', 'user_token=' . $this->session->data['user_token'], true));
+
         $data['user_token'] = $this->session->data['user_token'];
         
         $data['header'] = $this->load->controller('common/header');
