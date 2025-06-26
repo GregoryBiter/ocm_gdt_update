@@ -36,11 +36,6 @@
                 <input type="text" name="module_gdt_updater_server" id="input-server" class="form-control" placeholder="URL сервера обновлений" />
               </div>
               <div class="form-group">
-                <label for="input-client-id">Client ID</label>
-                <input type="text" name="module_gdt_updater_client_id" id="input-client-id" class="form-control" placeholder="Идентификатор клиента" />
-                <small class="help-block">Уникальный идентификатор клиента для аутентификации</small>
-              </div>
-              <div class="form-group">
                 <label for="input-api-key">API ключ</label>
                 <input type="text" name="module_gdt_updater_api_key" id="input-api-key" class="form-control" placeholder="API ключ" />
                 <small class="help-block">Секретный ключ для доступа к серверу обновлений</small>
@@ -536,7 +531,6 @@ function loadSettings() {
         dataType: 'json',
         success: function(json) {
             $('#input-server').val(json.module_gdt_updater_server || '');
-            $('#input-client-id').val(json.module_gdt_updater_client_id || '');
             $('#input-api-key').val(json.module_gdt_updater_api_key || '');
             $('#input-status').val(json.module_gdt_updater_status || '0');
         },

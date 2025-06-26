@@ -98,20 +98,26 @@ class Updater {
     public function checkModuleUpdate($server_url, $module, $client_id = 'default', $api_key = '') {
         $url = rtrim($server_url, '/') . '/index.php?route=gdt_update_server/check';
         
-        // Задаем фиксированный API ключ для отладки
+        // Получаем API ключ из настроек, если не передан
         if (empty($api_key)) {
-            $api_key = 'your_secret_api_key_123';
+            $api_key = $this->registry->get('config')->get('module_gdt_updater_api_key');
         }
         
         // Логируем для отладки
-        $this->log->write('GDT Updater Debug: API request with client_id=' . $client_id . ', api_key=' . $api_key);
+        if (!empty($api_key)) {
+            $this->log->write('GDT Updater Debug: API request for module ' . $module['code'] . ' with API key');
+        }
         
+        // Данные в соответствии с серверной авторизацией
         $post_data = array(
             'code' => $module['code'],
-            'version' => $module['version'],
-            'client_id' => $client_id,
-            'api_key' => $api_key
+            'version' => $module['version']
         );
+        
+        // Добавляем API ключ только если он есть
+        if (!empty($api_key)) {
+            $post_data['api_key'] = $api_key;
+        }
         
         // Инициализация cURL сессии
         $curl = curl_init();
@@ -183,20 +189,25 @@ class Updater {
             // URL для загрузки обновления
             $download_url = rtrim($server_url, '/') . '/index.php?route=gdt_update_server/download';
             
-            // Задаем фиксированный API ключ для отладки
+            // Получаем API ключ из настроек, если не передан
             if (empty($api_key)) {
-                $api_key = 'your_secret_api_key_123';
+                $api_key = $this->registry->get('config')->get('module_gdt_updater_api_key');
             }
             
             // Логируем для отладки
-            $this->log->write('GDT Updater Debug: Download request with client_id=' . $client_id . ', api_key=' . $api_key);
+            if (!empty($api_key)) {
+                $this->log->write('GDT Updater Debug: Download request for module ' . $module['code'] . ' with API key');
+            }
             
+            // Данные в соответствии с серверной авторизацией
             $post_data = array(
-                'code' => $module['code'],
-                'version' => $update_info['version'],
-                'client_id' => $client_id,
-                'api_key' => $api_key
+                'code' => $module['code']
             );
+            
+            // Добавляем API ключ только если он есть
+            if (!empty($api_key)) {
+                $post_data['api_key'] = $api_key;
+            }
             
             // Инициализация cURL сессии
             $curl = curl_init();
@@ -283,8 +294,16 @@ class Updater {
             $zip->extractTo($extract_dir);
             $zip->close();
             
+            // Проверяем структуру архива и определяем исходную директорию
+            $source_dir = $extract_dir;
+            
+            // Если архив имеет структуру OpenCart с папкой upload
+            if (is_dir($extract_dir . '/upload')) {
+                $source_dir = $extract_dir . '/upload';
+            }
+            
             // Создаем резервную копию перед обновлением
-            $backup_result = $this->createModuleBackup($module, $update_info, $extract_dir);
+            $backup_result = $this->createModuleBackup($module, $update_info, $source_dir);
             if ($backup_result === false) {
                 // Если не удалось создать резервную копию, логируем предупреждение, но продолжаем обновление
                 $this->log->write('GDT Updater warning: Failed to create backup for module ' . $module['code']);
@@ -302,7 +321,7 @@ class Updater {
             // получаем путь к директории OpenCart
             $opencart_dir = realpath(DIR_APPLICATION . '../');
             
-            $this->copyDirectory($extract_dir, $opencart_dir);
+            $this->copyDirectory($source_dir, $opencart_dir);
             
             // Обновляем версию в файле хука
             $hook_content = file_get_contents($module['file_path']);
@@ -332,10 +351,10 @@ class Updater {
      * 
      * @param array $module Информация о модуле
      * @param array $update_info Информация об обновлении
-     * @param string $extract_dir Директория с распакованными файлами обновления
+     * @param string $source_dir Директория с файлами обновления (уже определена правильная структура)
      * @return string|bool Путь к директории резервной копии или false в случае ошибки
      */
-    public function createModuleBackup($module, $update_info, $extract_dir) {
+    public function createModuleBackup($module, $update_info, $source_dir) {
         try {
             // Проверяем, определена ли константа DIR_STORAGE
             if (!defined('DIR_STORAGE')) {
@@ -395,10 +414,10 @@ class Updater {
             $files_to_backup = [];
             $opencart_dir = realpath(DIR_APPLICATION . '/../');
             
-            // Рекурсивно сканируем директорию с распакованными файлами
-            $this->scanDirectory($extract_dir, function($file) use ($extract_dir, $opencart_dir, $files_backup_dir, &$files_to_backup) {
+            // Рекурсивно сканируем директорию с файлами обновления
+            $this->scanDirectory($source_dir, function($file) use ($source_dir, $opencart_dir, $files_backup_dir, &$files_to_backup) {
                 // Получаем относительный путь к файлу
-                $relative_path = str_replace($extract_dir . '/', '', $file);
+                $relative_path = str_replace($source_dir . '/', '', $file);
                 
                 // Проверяем, существует ли файл в системе
                 $system_file_path = $opencart_dir . '/' . $relative_path;

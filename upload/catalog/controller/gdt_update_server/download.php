@@ -3,6 +3,7 @@ class ControllerGdtUpdateServerDownload extends Controller {
     
     public function index() {
         $this->load->language('extension/module/gdt_update_server');
+        $this->load->model('extension/module/gdt_update_server');
         
         // Проверяем, включен ли модуль сервера обновлений
         if (!$this->config->get('module_gdt_update_server_status')) {
@@ -45,24 +46,42 @@ class ControllerGdtUpdateServerDownload extends Controller {
             return;
         }
         
-        // Логирование запроса если включено
-        if ($this->config->get('module_gdt_update_server_log_enabled')) {
-            $this->log->write('GDT Update Server: Download request for module ' . $code);
-        }
+        // Получаем информацию о модуле из базы данных
+        $module = $this->model_extension_module_gdt_update_server->getModuleByCode($code);
         
-        // Получаем путь к файлу модуля
-        $file_path = $this->getModuleFilePath($code);
-        
-        if (!$file_path || !file_exists($file_path)) {
+        if (!$module) {
             $this->response->addHeader('HTTP/1.1 404 Not Found');
             $this->response->addHeader('Content-Type: application/json');
             $this->response->setOutput(json_encode(array('error' => 'Module not found')));
             return;
         }
         
+        // Проверяем существование файла
+        if (!file_exists($module['file_path'])) {
+            $this->response->addHeader('HTTP/1.1 404 Not Found');
+            $this->response->addHeader('Content-Type: application/json');
+            $this->response->setOutput(json_encode(array('error' => 'Module file not found')));
+            return;
+        }
+        
+        // Логирование запроса если включено
+        if ($this->config->get('module_gdt_update_server_log_enabled')) {
+            $this->log->write('GDT Update Server: Download request for module ' . $code . ' (' . $module['name'] . ')');
+        }
+        
+        // Увеличиваем счетчик скачиваний
+        $this->model_extension_module_gdt_update_server->incrementDownloadsByCode($code);
+        
         // Отправляем файл
+        $this->sendFile($module['file_path'], $module['code'] . '_' . $module['version'] . '.zip');
+    }
+    
+    /**
+     * Отправить файл клиенту
+     */
+    private function sendFile($file_path, $filename) {
         $this->response->addHeader('Content-Type: application/zip');
-        $this->response->addHeader('Content-Disposition: attachment; filename="' . basename($file_path) . '"');
+        $this->response->addHeader('Content-Disposition: attachment; filename="' . $filename . '"');
         $this->response->addHeader('Content-Length: ' . filesize($file_path));
         $this->response->setOutput(file_get_contents($file_path));
     }
@@ -94,50 +113,5 @@ class ControllerGdtUpdateServerDownload extends Controller {
         }
         
         return true;
-    }
-    
-    /**
-     * Получить путь к файлу модуля
-     */
-    private function getModuleFilePath($code, $version = null) {
-        $modules_path = $this->getServerModulesPath();
-        $module_dir = $modules_path . '/' . $code;
-        
-        // Если версия указана, ищем файл с нужной версией
-        if ($version) {
-            $file_path = $module_dir . '/' . $code . '_' . $version . '.zip';
-            
-            if (file_exists($file_path)) {
-                return $file_path;
-            }
-        }
-        
-        // Если точная версия не найдена или не указана, ищем последнюю доступную
-        $files = glob($module_dir . '/' . $code . '_*.zip');
-        
-        if (!empty($files)) {
-            // Сортируем по версии и возвращаем последнюю
-            usort($files, function($a, $b) {
-                preg_match('/_([\d\.]+)\.zip$/', $a, $matches_a);
-                preg_match('/_([\d\.]+)\.zip$/', $b, $matches_b);
-                
-                $version_a = isset($matches_a[1]) ? $matches_a[1] : '0';
-                $version_b = isset($matches_b[1]) ? $matches_b[1] : '0';
-                
-                return version_compare($version_b, $version_a);
-            });
-            
-            return $files[0];
-        }
-        
-        return false;
-    }
-    
-    /**
-     * Получить путь к директории модулей сервера
-     */
-    private function getServerModulesPath() {
-        $upload_path = defined('DIR_STORAGE') ? DIR_STORAGE : DIR_SYSTEM . 'storage/';
-        return $upload_path . 'gdt_update_server/modules';
     }
 }

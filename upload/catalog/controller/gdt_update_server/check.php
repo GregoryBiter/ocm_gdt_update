@@ -3,6 +3,7 @@ class ControllerGdtUpdateServerCheck extends Controller {
     
     public function index() {
         $this->load->language('extension/module/gdt_update_server');
+        $this->load->model('extension/module/gdt_update_server');
         
         // Проверяем, включен ли модуль сервера обновлений
         if (!$this->config->get('module_gdt_update_server_status')) {
@@ -57,24 +58,29 @@ class ControllerGdtUpdateServerCheck extends Controller {
             $this->log->write('GDT Update Server: Check request for module ' . $code . ' version ' . $current_version);
         }
         
-        // Получаем информацию о модуле
-        $module_info = $this->getModuleInfo($code);
+        // Получаем информацию о модуле из базы данных
+        $module = $this->model_extension_module_gdt_update_server->getModuleByCode($code);
         
-        if (!$module_info) {
+        if (!$module) {
             $this->response->addHeader('Content-Type: application/json');
             $this->response->setOutput(json_encode(array('status' => 'not_found')));
             return;
         }
         
         // Сравниваем версии
-        if (version_compare($module_info['version'], $current_version, '>')) {
+        if (version_compare($module['version'], $current_version, '>')) {
             $response = array(
                 'status' => 'update_available',
-                'version' => $module_info['version'],
-                'name' => $module_info['name'],
-                'description' => $module_info['description'],
-                'author' => $module_info['author'],
-                'release_notes' => isset($module_info['release_notes']) ? $module_info['release_notes'] : ''
+                'version' => $module['version'],
+                'name' => $module['name'],
+                'description' => $module['description'],
+                'author' => $module['author'],
+                'author_url' => $module['author_url'],
+                'category' => $module['category'],
+                'opencart_version' => $module['opencart_version'],
+                'dependencies' => $module['dependencies'],
+                'file_size' => $module['file_size'],
+                'date_modified' => $module['date_modified']
             );
         } else {
             $response = array('status' => 'up_to_date');
@@ -111,29 +117,5 @@ class ControllerGdtUpdateServerCheck extends Controller {
         }
         
         return true;
-    }
-    
-    /**
-     * Получить информацию о модуле
-     */
-    private function getModuleInfo($code) {
-        $modules_path = $this->getServerModulesPath();
-        $module_dir = $modules_path . '/' . $code;
-        $info_file = $module_dir . '/info.json';
-        
-        if (file_exists($info_file)) {
-            $info = json_decode(file_get_contents($info_file), true);
-            return $info;
-        }
-        
-        return false;
-    }
-    
-    /**
-     * Получить путь к директории модулей сервера
-     */
-    private function getServerModulesPath() {
-        $upload_path = defined('DIR_STORAGE') ? DIR_STORAGE : DIR_SYSTEM . 'storage/';
-        return $upload_path . 'gdt_update_server/modules';
     }
 }

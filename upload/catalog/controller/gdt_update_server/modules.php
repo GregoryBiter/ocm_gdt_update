@@ -18,13 +18,76 @@ class ControllerGdtUpdateServerModules extends Controller {
             'user_agent' => isset($this->request->server['HTTP_USER_AGENT']) ? $this->request->server['HTTP_USER_AGENT'] : ''
         ));
         
-        // Получаем список всех модулей
-        $modules = $this->getAvailableModules();
+        // Загружаем модель
+        $this->load->model('extension/module/gdt_update_server');
+        
+        // Получаем параметры фильтрации
+        $filter_data = array();
+        
+        if (isset($this->request->get['category'])) {
+            $filter_data['filter_category'] = $this->request->get['category'];
+        }
+        
+        if (isset($this->request->get['featured'])) {
+            $filter_data['filter_featured'] = (int)$this->request->get['featured'];
+        }
+        
+        if (isset($this->request->get['search'])) {
+            $filter_data['filter_name'] = $this->request->get['search'];
+        }
+        
+        if (isset($this->request->get['limit'])) {
+            $filter_data['limit'] = (int)$this->request->get['limit'];
+        } else {
+            $filter_data['limit'] = 20;
+        }
+        
+        if (isset($this->request->get['page'])) {
+            $filter_data['start'] = ((int)$this->request->get['page'] - 1) * $filter_data['limit'];
+        } else {
+            $filter_data['start'] = 0;
+        }
+        
+        // Только активные модули
+        $filter_data['filter_status'] = 1;
+        
+        // Получаем список модулей из базы данных
+        $modules = $this->model_extension_module_gdt_update_server->getModules($filter_data);
+        $total = $this->model_extension_module_gdt_update_server->getTotalModules($filter_data);
+        
+        // Обрабатываем данные модулей для API
+        $result_modules = array();
+        foreach ($modules as $module) {
+            $result_modules[] = array(
+                'code' => $module['code'],
+                'name' => $module['name'],
+                'description' => $module['description'],
+                'version' => $module['version'],
+                'author' => $module['author'],
+                'author_url' => $module['author_url'],
+                'category' => $module['category'],
+                'opencart_version' => $module['opencart_version'],
+                'dependencies' => $module['dependencies'],
+                'image' => $module['image'],
+                'demo_url' => $module['demo_url'],
+                'documentation_url' => $module['documentation_url'],
+                'support_url' => $module['support_url'],
+                'price' => (float)$module['price'],
+                'downloads' => (int)$module['downloads'],
+                'rating' => (float)$module['rating'],
+                'reviews' => (int)$module['reviews'],
+                'featured' => (bool)$module['featured'],
+                'date_added' => $module['date_added']
+            );
+        }
         
         $this->response->addHeader('Content-Type: application/json');
         $this->response->setOutput(json_encode(array(
             'success' => true,
-            'modules' => $modules
+            'modules' => $result_modules,
+            'total' => $total,
+            'page' => isset($this->request->get['page']) ? (int)$this->request->get['page'] : 1,
+            'limit' => $filter_data['limit']
         )));
     }
     
@@ -66,40 +129,6 @@ class ControllerGdtUpdateServerModules extends Controller {
         }
         
         return true;
-    }
-    
-    /**
-     * Получить список доступных модулей
-     */
-    private function getAvailableModules() {
-        $modules = array();
-        $modules_path = $this->getServerModulesPath();
-        
-        if (is_dir($modules_path)) {
-            $module_dirs = glob($modules_path . '/*', GLOB_ONLYDIR);
-            
-            foreach ($module_dirs as $module_dir) {
-                $info_file = $module_dir . '/info.json';
-                
-                if (file_exists($info_file)) {
-                    $info = json_decode(file_get_contents($info_file), true);
-                    
-                    if ($info) {
-                        // Возвращаем только публичную информацию
-                        $modules[] = array(
-                            'code' => $info['code'],
-                            'name' => $info['name'],
-                            'description' => isset($info['description']) ? $info['description'] : '',
-                            'version' => $info['version'],
-                            'author' => isset($info['author']) ? $info['author'] : '',
-                            'author_url' => isset($info['author_url']) ? $info['author_url'] : ''
-                        );
-                    }
-                }
-            }
-        }
-        
-        return $modules;
     }
     
     /**

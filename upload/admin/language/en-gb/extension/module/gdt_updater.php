@@ -31,12 +31,10 @@ $_['column_action']          = 'Action';
 
 // Entry
 $_['entry_server']           = 'Update Server URL';
-$_['entry_client_id']        = 'Client ID';
 $_['entry_api_key']          = 'API Key';
 $_['entry_status']           = 'Status';
 
 // Help
-$_['help_client_id']         = 'Enter the client ID provided by your update server administrator.';
 $_['help_api_key']           = 'Enter the API key provided by your update server administrator. This is required for authenticating with the update server.';
 
 // Button

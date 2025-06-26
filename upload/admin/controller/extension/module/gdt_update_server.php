@@ -8,6 +8,7 @@ class ControllerExtensionModuleGdtUpdateServer extends Controller {
         $this->document->setTitle($this->language->get('heading_title'));
         
         $this->load->model('setting/setting');
+        $this->load->model('extension/module/gdt_update_server');
         
         if (($this->request->server['REQUEST_METHOD'] == 'POST') && $this->validate()) {
             $this->model_setting_setting->editSetting('module_gdt_update_server', $this->request->post);
@@ -94,11 +95,12 @@ class ControllerExtensionModuleGdtUpdateServer extends Controller {
      */
     public function modules() {
         $this->load->language('extension/module/gdt_update_server');
+        $this->load->model('extension/module/gdt_update_server');
         
         $this->document->setTitle($this->language->get('heading_title_modules'));
         
-        // Получаем список модулей
-        $data['modules'] = $this->getServerModules();
+        // Получаем список модулей из базы данных
+        $data['modules'] = $this->model_extension_module_gdt_update_server->getModules();
         
         $data['breadcrumbs'] = array();
         
@@ -142,6 +144,7 @@ class ControllerExtensionModuleGdtUpdateServer extends Controller {
      */
     public function upload() {
         $this->load->language('extension/module/gdt_update_server');
+        $this->load->model('extension/module/gdt_update_server');
         
         $json = array();
         
@@ -176,11 +179,23 @@ class ControllerExtensionModuleGdtUpdateServer extends Controller {
                             $final_destination = $module_dir . '/' . $module_info['code'] . '_' . $module_info['version'] . '.zip';
                             rename($destination, $final_destination);
                             
-                            // Сохраняем информацию о модуле
-                            $info_file = $module_dir . '/info.json';
-                            file_put_contents($info_file, json_encode($module_info, JSON_PRETTY_PRINT));
+                            // Добавляем информацию о файле
+                            $module_info['file_path'] = $final_destination;
+                            $module_info['file_size'] = filesize($final_destination);
+                            $module_info['file_hash'] = md5_file($final_destination);
                             
-                            $json['success'] = $this->language->get('text_upload_success');
+                            // Проверяем, существует ли модуль в базе данных
+                            $existing_module = $this->model_extension_module_gdt_update_server->getModuleByCode($module_info['code']);
+                            
+                            if ($existing_module) {
+                                // Обновляем существующий модуль
+                                $this->model_extension_module_gdt_update_server->editModule($existing_module['module_id'], $module_info);
+                                $json['success'] = $this->language->get('text_update_success');
+                            } else {
+                                // Добавляем новый модуль
+                                $this->model_extension_module_gdt_update_server->addModule($module_info);
+                                $json['success'] = $this->language->get('text_upload_success');
+                            }
                         } else {
                             unlink($destination);
                             $json['error'] = $this->language->get('error_module_info');
@@ -198,31 +213,6 @@ class ControllerExtensionModuleGdtUpdateServer extends Controller {
         $this->response->setOutput(json_encode($json));
     }
     
-    /**
-     * Получить список модулей на сервере
-     */
-    private function getServerModules() {
-        $modules = array();
-        $modules_path = $this->getServerModulesPath();
-        
-        if (is_dir($modules_path)) {
-            $module_dirs = glob($modules_path . '/*', GLOB_ONLYDIR);
-            
-            foreach ($module_dirs as $module_dir) {
-                $info_file = $module_dir . '/info.json';
-                
-                if (file_exists($info_file)) {
-                    $info = json_decode(file_get_contents($info_file), true);
-                    
-                    if ($info) {
-                        $modules[] = $info;
-                    }
-                }
-            }
-        }
-        
-        return $modules;
-    }
     
     /**
      * Извлечь информацию о модуле из архива
@@ -231,32 +221,44 @@ class ControllerExtensionModuleGdtUpdateServer extends Controller {
         $zip = new ZipArchive();
         
         if ($zip->open($archive_path) === true) {
-            // Ищем файл с информацией о модуле
+            // Ищем файл с информацией о модуле в разных возможных местах
+            $possible_paths = array(
+                'system/hook/',           // Прямо в корне архива
+                'upload/system/hook/'     // В структуре OpenCart с папкой upload
+            );
+            
             for ($i = 0; $i < $zip->numFiles; $i++) {
                 $filename = $zip->getNameIndex($i);
                 
-                if (strpos($filename, 'system/hook/') !== false && substr($filename, -4) == '.php') {
-                    $content = $zip->getFromIndex($i);
-                    
-                    // Извлекаем информацию из комментариев
-                    preg_match('/name:\s*([^\n]+)/i', $content, $name_match);
-                    preg_match('/description:\s*([^\n]+)/i', $content, $description_match);
-                    preg_match('/version:\s*([^\n]+)/i', $content, $version_match);
-                    preg_match('/author:\s*([^\n]+)/i', $content, $author_match);
-                    
-                    if (isset($name_match[1]) && isset($version_match[1])) {
-                        $code = basename($filename, '.php');
+                // Проверяем все возможные пути
+                foreach ($possible_paths as $path) {
+                    if (strpos($filename, $path) !== false && substr($filename, -4) == '.php') {
+                        $content = $zip->getFromIndex($i);
                         
-                        $zip->close();
+                        // Извлекаем информацию из комментариев
+                        preg_match('/name:\s*([^\n]+)/i', $content, $name_match);
+                        preg_match('/description:\s*([^\n]+)/i', $content, $description_match);
+                        preg_match('/version:\s*([^\n]+)/i', $content, $version_match);
+                        preg_match('/author:\s*([^\n]+)/i', $content, $author_match);
+                        preg_match('/author[_\s]*url:\s*([^\n]+)/i', $content, $author_url_match);
                         
-                        return array(
-                            'code' => $code,
-                            'name' => trim($name_match[1]),
-                            'description' => isset($description_match[1]) ? trim($description_match[1]) : '',
-                            'version' => trim($version_match[1]),
-                            'author' => isset($author_match[1]) ? trim($author_match[1]) : '',
-                            'upload_date' => date('Y-m-d H:i:s')
-                        );
+                        if (isset($name_match[1]) && isset($version_match[1])) {
+                            // Получаем код модуля из имени файла
+                            $code = basename($filename, '.php');
+                            
+                            $zip->close();
+                            
+                            return array(
+                                'code' => $code,
+                                'name' => trim($name_match[1]),
+                                'description' => isset($description_match[1]) ? trim($description_match[1]) : '',
+                                'version' => trim($version_match[1]),
+                                'author' => isset($author_match[1]) ? trim($author_match[1]) : '',
+                                'author_url' => isset($author_url_match[1]) ? trim($author_url_match[1]) : '',
+                                'upload_date' => date('Y-m-d H:i:s'),
+                                'archive_structure' => strpos($filename, 'upload/') === 0 ? 'opencart' : 'direct'
+                            );
+                        }
                     }
                 }
             }
@@ -280,6 +282,7 @@ class ControllerExtensionModuleGdtUpdateServer extends Controller {
      */
     public function delete() {
         $this->load->language('extension/module/gdt_update_server');
+        $this->load->model('extension/module/gdt_update_server');
         
         $json = array();
         
@@ -288,11 +291,25 @@ class ControllerExtensionModuleGdtUpdateServer extends Controller {
         } else {
             if (isset($this->request->post['code'])) {
                 $code = $this->request->post['code'];
-                $modules_path = $this->getServerModulesPath();
-                $module_dir = $modules_path . '/' . $code;
                 
-                if (is_dir($module_dir)) {
-                    $this->deleteDirectory($module_dir);
+                // Получаем информацию о модуле из базы данных
+                $module = $this->model_extension_module_gdt_update_server->getModuleByCode($code);
+                
+                if ($module) {
+                    // Удаляем файл модуля
+                    if (file_exists($module['file_path'])) {
+                        unlink($module['file_path']);
+                    }
+                    
+                    // Удаляем директорию модуля
+                    $module_dir = dirname($module['file_path']);
+                    if (is_dir($module_dir)) {
+                        $this->deleteDirectory($module_dir);
+                    }
+                    
+                    // Удаляем запись из базы данных
+                    $this->model_extension_module_gdt_update_server->deleteModule($module['module_id']);
+                    
                     $json['success'] = $this->language->get('text_delete_success');
                 } else {
                     $json['error'] = $this->language->get('error_module_not_found');
@@ -311,22 +328,17 @@ class ControllerExtensionModuleGdtUpdateServer extends Controller {
      */
     public function info() {
         $this->load->language('extension/module/gdt_update_server');
+        $this->load->model('extension/module/gdt_update_server');
         
         $json = array();
         
         if (isset($this->request->post['code'])) {
             $code = $this->request->post['code'];
-            $modules_path = $this->getServerModulesPath();
-            $info_file = $modules_path . '/' . $code . '/info.json';
             
-            if (file_exists($info_file)) {
-                $info = json_decode(file_get_contents($info_file), true);
-                
-                if ($info) {
-                    $json = $info;
-                } else {
-                    $json['error'] = $this->language->get('error_module_info');
-                }
+            $module = $this->model_extension_module_gdt_update_server->getModuleByCode($code);
+            
+            if ($module) {
+                $json = $module;
             } else {
                 $json['error'] = $this->language->get('error_module_not_found');
             }
@@ -372,6 +384,11 @@ class ControllerExtensionModuleGdtUpdateServer extends Controller {
     }
     
     public function install() {
+        $this->load->model('extension/module/gdt_update_server');
+        
+        // Создаем таблицу для хранения модулей
+        $this->model_extension_module_gdt_update_server->createTable();
+        
         // Создаем необходимые директории
         $modules_path = $this->getServerModulesPath();
         if (!is_dir($modules_path)) {
@@ -381,6 +398,12 @@ class ControllerExtensionModuleGdtUpdateServer extends Controller {
     
     public function uninstall() {
         $this->load->model('setting/setting');
+        $this->load->model('extension/module/gdt_update_server');
+        
+        // Удаляем настройки
         $this->model_setting_setting->deleteSetting('module_gdt_update_server');
+        
+        // Удаляем таблицу (по желанию - можно оставить данные)
+        // $this->model_extension_module_gdt_update_server->dropTable();
     }
 }
