@@ -101,7 +101,6 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
                 'new_version' => '',
                 'update_url' => '',
                 'has_backup' => false,
-                'restore_url' => '',
                 'settings_url' => '',
                 'auto_update' => false
             );
@@ -123,14 +122,6 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
                     $module_data['has_update'] = true;
                     $module_data['new_version'] = $update_info['version'];
                     $module_data['update_url'] = $this->url->link('extension/module/gdt_updater/update', 'user_token=' . $this->session->data['user_token'] . '&code=' . $module['code'], true);
-                }
-                
-                // Проверяем наличие резервной копии
-                $backups = $this->updater->getModuleBackups($module['code']);
-                if (!empty($backups)) {
-                    $module_data['has_backup'] = true;
-                    $backup_dir = $backups[0]['dir'];
-                    $module_data['restore_url'] = $this->url->link('extension/module/gdt_updater/restore', 'user_token=' . $this->session->data['user_token'] . '&code=' . $module['code'] . '&backup=' . $backup_dir, true);
                 }
             }
             
@@ -215,8 +206,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
                 'has_update' => false,
                 'new_version' => '',
                 'update_url' => '',
-                'has_backup' => false,
-                'restore_url' => ''
+                'has_backup' => false
             );
             
             if (!empty($server_url)) {
@@ -237,14 +227,6 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
                     $module_data['has_update'] = true;
                     $module_data['new_version'] = $update_info['version'];
                     $module_data['update_url'] = $this->url->link('extension/module/gdt_updater/update', 'user_token=' . $this->session->data['user_token'] . '&code=' . $module['code'], true);
-                }
-                
-                // Проверяем наличие резервной копии
-                $backups = $this->updater->getModuleBackups($module['code']);
-                if (!empty($backups)) {
-                    $module_data['has_backup'] = true;
-                    $backup_dir = $backups[0]['dir'];
-                    $module_data['restore_url'] = $this->url->link('extension/module/gdt_updater/restore', 'user_token=' . $this->session->data['user_token'] . '&code=' . $module['code'] . '&backup=' . $backup_dir, true);
                 }
             }
             
@@ -389,60 +371,6 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
                 } else {
                     $json['error'] = $this->language->get('error_module_not_found');
                 }
-            }
-        } else {
-            $json['error'] = $this->language->get('error_code');
-        }
-        
-        $this->response->addHeader('Content-Type: application/json');
-        $this->response->setOutput(json_encode($json));
-    }
-    
-    /**
-     * Страница просмотра резервных копий модуля
-     */
-    /**
-     * Обработка восстановления модуля из резервной копии
-     */
-    public function restore() {
-        $this->load->language('extension/module/gdt_updater');
-        
-        $json = array();
-        
-        // Проверяем наличие необходимых параметров
-        if (isset($this->request->get['code']) && isset($this->request->get['backup'])) {
-            $code = $this->request->get['code'];
-            $backup = $this->request->get['backup'];
-            
-            // Проверяем, что модуль существует
-            $module = $this->updater->getModuleByCode($code);
-            
-            if ($module) {
-                // Восстанавливаем модуль из резервной копии
-                $result = $this->updater->restoreModuleFromBackup($code, $backup);
-                
-                if ($result === true) {
-                    // Получаем информацию о резервной копии для сообщения
-                    $backups = $this->updater->getModuleBackups($code);
-                    $backup_info = null;
-                    
-                    foreach ($backups as $backup_item) {
-                        if ($backup_item['dir'] === $backup) {
-                            $backup_info = $backup_item['info'];
-                            break;
-                        }
-                    }
-                    
-                    if ($backup_info) {
-                        $json['success'] = sprintf($this->language->get('text_restore_success'), $module['name'], $backup_info['from_version']);
-                    } else {
-                        $json['success'] = sprintf($this->language->get('text_restore_success'), $module['name'], '');
-                    }
-                } else {
-                    $json['error'] = sprintf($this->language->get('error_restore'), $result);
-                }
-            } else {
-                $json['error'] = $this->language->get('error_module_not_found');
             }
         } else {
             $json['error'] = $this->language->get('error_code');

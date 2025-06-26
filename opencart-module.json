@@ -12,7 +12,6 @@
         "admin/view/template/extension/module/gdt_update_server.twig",
         "admin/view/template/extension/module/gdt_update_server_modules.twig",
         "admin/view/template/extension/module/gdt_updater.twig",
-        "admin/view/template/extension/module/gdt_updater_backups.twig",
         "catalog/controller/gdt_update_server/check.php",
         "catalog/controller/gdt_update_server/download.php",
         "catalog/controller/gdt_update_server/modules.php",

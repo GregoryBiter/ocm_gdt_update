@@ -16,13 +16,6 @@ $_['text_update']            = 'Update';
 $_['text_latest']            = 'Latest Version';
 $_['text_up_to_date']        = 'Up to Date';
 $_['text_installed_modules'] = 'Installed Modules';
-$_['text_backups']           = 'Backups';
-$_['text_backup_date']       = 'Backup Date';
-$_['text_from_version']      = 'From Version';
-$_['text_to_version']        = 'To Version';
-$_['text_restore_success']   = 'Module %s has been successfully restored to version %s.';
-$_['text_no_backups']        = 'No backups found for this module.';
-$_['text_confirm_restore']   = 'Are you sure you want to restore this module to version %s? This will replace all current files with the backed up version.';
 
 // Column
 $_['column_name']            = 'Module Name';
@@ -40,8 +33,6 @@ $_['help_api_key']           = 'Enter the API key provided by your update server
 // Button
 $_['button_check']           = 'Check Now';
 $_['button_update']          = 'Update';
-$_['button_restore']         = 'Restore';
-$_['button_backups']         = 'Backups';
 $_['button_back']            = 'Back';
 
 // Error
@@ -58,8 +49,3 @@ $_['error_curl']             = 'cURL error: %s';
 $_['error_http']             = 'HTTP error code: %s';
 $_['error_auth']             = 'Authentication failed. Please check your Client ID and API Key.';
 $_['error_server_auth']      = 'Update server authentication error: %s';
-$_['error_backup_not_found'] = 'Backup not found.';
-$_['error_backup_info']      = 'Backup information file not found.';
-$_['error_backup_info_parse'] = 'Failed to parse backup information.';
-$_['error_backup_files']     = 'Backup files not found.';
-$_['error_restore']          = 'Failed to restore module: %s';

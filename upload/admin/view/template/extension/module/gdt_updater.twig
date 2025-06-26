@@ -110,14 +110,6 @@
                       </span>
                     {% endif %}
                     
-                    <!-- Ссылка на восстановление -->
-                    {% if module.has_backup %}
-                      <span class="action-separator">|</span>
-                      <a href="#" class="action-link restore-link restore-module" data-url="{{ module.restore_url }}" data-code="{{ module.code }}">
-                        <i class="fa fa-undo"></i> Восстановить
-                      </a>
-                    {% endif %}
-                    
                   </div>
                 </div>
                 
@@ -233,9 +225,9 @@
 }
 
 .module-title {
-    font-size: 18px;
+    font-size: 15px;
     font-weight: 600;
-    margin: 0 0 12px 0;
+    margin: 0 0 5px 0;
     color: #333;
     display: flex;
     align-items: center;
@@ -280,15 +272,6 @@
     border-bottom-color: #b02a37;
 }
 
-.action-link.restore-link {
-    color: #fd7e14;
-}
-
-.action-link.restore-link:hover {
-    color: #e55100;
-    border-bottom-color: #e55100;
-}
-
 .action-separator {
     color: #ccc;
     margin: 0 2px;
@@ -297,14 +280,14 @@
 .module-column-2 {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 2px;
 }
 
 .module-description {
     color: #666;
     font-size: 14px;
     line-height: 1.5;
-    margin: 0 0 12px 0;
+    margin: 0 0 0px 0;
 }
 
 .module-meta {
@@ -324,7 +307,6 @@
 .meta-label {
     font-weight: 600;
     color: #333;
-    min-width: 60px;
 }
 
 .version-current {
@@ -644,42 +626,6 @@ $(document).ready(function() {
     });
     
     // Восстановление модуля
-    $(document).on('click', '.restore-module', function(e) {
-        e.preventDefault();
-        
-        if (!confirm('Вы уверены, что хотите восстановить модуль из резервной копии?')) {
-            return false;
-        }
-        
-        var element = this;
-        var url = $(element).data('url');
-        var originalText = $(element).html();
-        
-        $.ajax({
-            url: url,
-            dataType: 'json',
-            beforeSend: function() {
-                $(element).html('<i class="fa fa-spinner fa-spin"></i> Восстановление...').addClass('disabled');
-            },
-            success: function(json) {
-                if (json.error) {
-                    showAlert('danger', json.error);
-                    $(element).html(originalText).removeClass('disabled');
-                } else if (json.success) {
-                    showAlert('success', json.success);
-                    // Перезагружаем страницу после успешного восстановления
-                    setTimeout(function() {
-                        location.reload();
-                    }, 2000);
-                }
-            },
-            error: function(xhr, ajaxOptions, thrownError) {
-                showAlert('danger', 'Ошибка восстановления: ' + thrownError);
-                $(element).html(originalText).removeClass('disabled');
-            }
-        });
-    });
-    
     // Переключение автообновлений
     $(document).on('change', '.auto-update-toggle', function() {
         var element = this;
