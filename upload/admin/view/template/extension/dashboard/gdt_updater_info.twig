@@ -1,0 +1,19 @@
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <h3 class="panel-title"><i class="fa fa-refresh"></i> {{ heading_title }}</h3>
+    </div>
+    <div class="panel-body">
+        {% if updates %}
+            <ul>
+                {% for update in updates %}
+                    <li>
+                        <strong>{{ update.name }}</strong> ({{ update.current_version }}) → {{ update.new_version }}
+                        <a href="{{ update.update_url }}" class="btn btn-warning btn-sm">{{ text_update }}</a>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>{{ text_no_updates }}</p>
+        {% endif %}
+    </div>
+</div>
