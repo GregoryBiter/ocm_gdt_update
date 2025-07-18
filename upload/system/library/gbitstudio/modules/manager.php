@@ -197,14 +197,8 @@ class Manager {
                 }
             }
 
-            $module_info = $this->getModuleByCode($module_code);
-            if (!$module_info) {
-                throw new \Exception('Модуль не найден на сервере');
-            }
-
-            $this->checkCompatibility($module_info);
-
-            $temp_file = $this->downloadModule($download_url);
+            // Скачиваем модуль с сервера
+            $temp_file = $this->downloadModule($download_url, $module_code);
             if (!$temp_file) {
                 throw new \Exception('Не удалось скачать модуль');
             }
@@ -387,28 +381,64 @@ class Manager {
      * Скачивание модуля
      * 
      * @param string $download_url URL для скачивания
+     * @param string $module_code Код модуля
      * @return string|false Путь к временному файлу или false при ошибке
      */
-    private function downloadModule($download_url) {
+    private function downloadModule($download_url, $module_code = '') {
         $temp_file = tempnam(sys_get_temp_dir(), 'gdt_module_');
 
         $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $download_url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 300);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        
+        // Формируем POST данные
+        $post_data = array();
+        if (!empty($module_code)) {
+            $post_data['module_code'] = $module_code;
+        }
+        
+        // Получаем API ключ из конфигурации если он есть
+        $api_key = $this->registry->get('config')->get('module_gdt_updater_api_key');
+        if (!empty($api_key)) {
+            $post_data['api_key'] = $api_key;
+        }
+        
+        curl_setopt_array($ch, array(
+            CURLOPT_URL => $download_url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_TIMEOUT => 300,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_USERAGENT => 'GDT-ModuleManager/1.0'
+        ));
+        
+        // Если есть данные для POST, отправляем POST-запрос
+        if (!empty($post_data)) {
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
+        }
 
         $data = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
         curl_close($ch);
-
-        if ($http_code === 200 && $data !== false) {
-            file_put_contents($temp_file, $data);
-            return $temp_file;
+        
+        if ($error) {
+            throw new \Exception('cURL ошибка: ' . $error);
         }
 
-        return false;
+        if ($http_code === 200 && $data !== false) {
+            // Проверяем, что получили файл, а не JSON с ошибкой
+            $decoded = json_decode($data, true);
+            if ($decoded !== null && isset($decoded['error'])) {
+                throw new \Exception('Ошибка сервера: ' . $decoded['error']);
+            }
+            
+            file_put_contents($temp_file, $data);
+            return $temp_file;
+        } else {
+            throw new \Exception('HTTP ошибка: ' . $http_code);
+        }
     }
     
     /**
@@ -532,7 +562,8 @@ class Manager {
             );
 
             foreach ($iterator as $item) {
-                $target = $destination . DIRECTORY_SEPARATOR . $iterator->getSubPathName();
+                $relative_path = str_replace($source . DIRECTORY_SEPARATOR, '', $item->getPathname());
+                $target = $destination . DIRECTORY_SEPARATOR . $relative_path;
 
                 if ($item->isDir()) {
                     if (!is_dir($target)) {
@@ -649,8 +680,9 @@ class Manager {
      * Очистка кэша
      */
     private function clearCache() {
-        if ($this->cache) {
-            $this->cache->delete('*');
+        $cache = $this->registry->get('cache');
+        if ($cache) {
+            $cache->delete('*');
         }
     }
     

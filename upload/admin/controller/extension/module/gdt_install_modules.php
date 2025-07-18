@@ -347,8 +347,6 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
         }
         
         $response = $this->makeApiRequest($url, $post_data);
-
-        var_dump($response); // Отладочный вывод
         
         if (isset($response['success']) && $response['success']) {
             return $response['modules'];
