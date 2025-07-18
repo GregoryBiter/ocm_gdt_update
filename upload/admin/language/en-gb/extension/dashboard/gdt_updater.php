@@ -1,6 +1,6 @@
 <?php
 // Heading
-$_['heading_title']     = 'GDT Updater Dashboard';
+$_['heading_title']     = 'GDT Updates';
 
 // Text
 $_['text_extension']    = 'Extensions';
@@ -8,6 +8,15 @@ $_['text_success']      = 'Success: You have modified GDT Updater dashboard!';
 $_['text_edit']         = 'Edit GDT Updater Dashboard';
 $_['text_enabled']      = 'Enabled';
 $_['text_disabled']     = 'Disabled';
+$_['text_module']       = 'Module';
+$_['text_current_version'] = 'Current Version';
+$_['text_new_version']  = 'New Version';
+$_['text_action']       = 'Action';
+$_['text_update']       = 'Update';
+$_['text_available']    = 'Available';
+$_['text_updates_found'] = 'Updates found';
+$_['text_no_updates']   = 'All modules are up to date';
+$_['text_check_updates'] = 'Check for Updates';
 
 // Entry
 $_['entry_width']       = 'Width';

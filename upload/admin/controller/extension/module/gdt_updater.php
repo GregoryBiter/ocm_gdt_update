@@ -340,12 +340,18 @@ class ControllerExtensionModuleGdtUpdater extends Controller
 
             // Проверяем, не пустой ли URL и устанавливаем значение по умолчанию, если нужно
             if (empty($server_url)) {
-                // Для локальной разработки используем путь к локальному серверу
-                $server_url = 'https://example.com/server';
-
-                // Если есть определенная константа HTTP_SERVER, используем ее
-                if (defined('HTTP_SERVER')) {
+                // Проверяем наличие переменной окружения для Docker
+                $docker_server_url = getenv('GDT_UPDATE_SERVER');
+                if ($docker_server_url) {
+                    $server_url = $docker_server_url;
+                }
+                // Если переменной окружения нет, используем HTTP_SERVER
+                elseif (defined('HTTP_SERVER')) {
                     $server_url = HTTP_SERVER . 'ocm_gdt_update/server';
+                }
+                // Если ничего не подошло, используем значение по умолчанию
+                else {
+                    $server_url = 'https://example.com/server';
                 }
             }
 
@@ -370,16 +376,29 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                             $json['error'] = sprintf($this->language->get('error_http'), $update_info['code']);
                         }
                     } else if ($update_info) {
-                        // Получаем API-ключ
-                        $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
+                        // Логируем начало процесса обновления
+                        $this->log->write('GDT Updater: Starting update for module ' . $code . ' from version ' . $module['version'] . ' to ' . $update_info['version']);
+                        
+                        try {
+                            // Скачиваем и устанавливаем обновление
+                            $result = $this->manager->downloadAndInstallUpdate($server_url, $module, $update_info, '', $api_key);
 
-                        // Скачиваем и устанавливаем обновление
-                        $result = $this->manager->downloadAndInstallUpdate($server_url, $module, $update_info, '', $api_key);
-
-                        if ($result === true) {
-                            $json['success'] = sprintf($this->language->get('text_update_success'), $module['name']);
-                        } else {
-                            $json['error'] = $result;
+                            if ($result === true) {
+                                // Очищаем все кэши OpenCart
+                                $this->manager->clearCache();
+                                
+                                // Проверяем, что версия действительно обновилась
+                                $updated_module = $this->manager->getModuleByCode($code);
+                                if ($updated_module && $updated_module['version'] === $update_info['version']) {
+                                    $json['success'] = sprintf($this->language->get('text_update_success'), $module['name'] ?? $module['module_name']) . ' (v' . $update_info['version'] . ')';
+                                } else {
+                                    $json['warning'] = 'Файлы скопированы, но версия модуля не обновилась. Возможно, требуется ручная проверка.';
+                                }
+                            } else {
+                                $json['error'] = $result;
+                            }
+                        } catch (Exception $e) {
+                            $json['error'] = 'Ошибка при обновлении: ' . $e->getMessage();
                         }
                     } else {
                         $json['error'] = $this->language->get('error_no_update');
@@ -449,6 +468,31 @@ class ControllerExtensionModuleGdtUpdater extends Controller
             'admin/controller/common/dashboard/before', // Триггер
             'extension/module/gdt_updater/checkUpdates' // Обработчик
         );
+
+        // Автоматически добавляем и включаем Dashboard модуль
+        $this->load->model('setting/extension');
+        $this->load->model('setting/setting');
+
+        // Добавляем расширение в список установленных
+        $this->model_setting_extension->install('dashboard', 'gdt_updater');
+
+        // Настройки для Dashboard модуля
+        $dashboard_settings = array(
+            'dashboard_gdt_updater_width' => '6',      // Ширина модуля (половина экрана)
+            'dashboard_gdt_updater_status' => '1',     // Включен
+            'dashboard_gdt_updater_sort_order' => '1'  // Первое место
+        );
+
+        // Сохраняем настройки
+        $this->model_setting_setting->editSetting('dashboard_gdt_updater', $dashboard_settings);
+
+        // Переставляем все остальные dashboard модули с sort_order >= 1 на одну позицию вниз
+        $this->db->query("UPDATE " . DB_PREFIX . "setting 
+                         SET value = (CAST(value AS UNSIGNED) + 1) 
+                         WHERE `key` LIKE '%_sort_order' 
+                         AND `group` LIKE 'dashboard_%' 
+                         AND `group` != 'dashboard_gdt_updater' 
+                         AND CAST(value AS UNSIGNED) >= 1");
     }
 
     public function uninstall()
@@ -458,6 +502,21 @@ class ControllerExtensionModuleGdtUpdater extends Controller
 
         $this->load->model('setting/setting');
         $this->model_setting_setting->deleteSetting('module_gdt_updater');
+
+        // Удаляем Dashboard модуль при деинсталляции
+        $this->load->model('setting/extension');
+        $this->model_setting_extension->uninstall('dashboard', 'gdt_updater');
+
+        // Удаляем настройки Dashboard модуля
+        $this->model_setting_setting->deleteSetting('dashboard_gdt_updater');
+
+        // Переставляем все остальные dashboard модули с sort_order > 1 на одну позицию вверх
+        $this->db->query("UPDATE " . DB_PREFIX . "setting 
+                         SET value = (CAST(value AS UNSIGNED) - 1) 
+                         WHERE `key` LIKE '%_sort_order' 
+                         AND `group` LIKE 'dashboard_%' 
+                         AND `group` != 'dashboard_gdt_updater' 
+                         AND CAST(value AS UNSIGNED) > 1");
     }
 
 

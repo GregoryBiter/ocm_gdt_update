@@ -1,0 +1,48 @@
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <h3 class="panel-title"><i class="fa fa-refresh"></i> {{ heading_title }}</h3>
+    </div>
+    <div class="panel-body">
+        {% if updates %}
+            <ul>
+                {% for update in updates %}
+                    <li>
+                        <strong>{{ update.name }}</strong> ({{ update.current_version }}) → {{ update.new_version }}
+                        <a href="{{ update.update_url }}" class="btn btn-warning btn-sm">{{ text_update }}</a>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>{{ text_no_updates }}</p>
+        {% endif %}
+    </div>
+</div>
+
+<form action="{{ action }}" method="post" enctype="multipart/form-data">
+    <div class="form-group">
+        <label for="input-width">{{ text_width }}</label>
+        <select name="dashboard_gdt_updater_width" id="input-width" class="form-control">
+            {% for column in columns %}
+                <option value="{{ column }}" {% if column == dashboard_gdt_updater_width %}selected{% endif %}>{{ column }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="input-status">{{ text_status }}</label>
+        <select name="dashboard_gdt_updater_status" id="input-status" class="form-control">
+            <option value="1" {% if dashboard_gdt_updater_status %}selected{% endif %}>{{ text_enabled }}</option>
+            <option value="0" {% if not dashboard_gdt_updater_status %}selected{% endif %}>{{ text_disabled }}</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="input-sort-order">{{ text_sort_order }}</label>
+        <input type="text" name="dashboard_gdt_updater_sort_order" value="{{ dashboard_gdt_updater_sort_order }}" placeholder="{{ text_sort_order }}" id="input-sort-order" class="form-control" />
+    </div>
+
+    <div class="text-right">
+        <button type="submit" class="btn btn-primary"><i class="fa fa-save"></i> {{ button_save }}</button>
+        <a href="{{ cancel }}" class="btn btn-default"><i class="fa fa-reply"></i> {{ button_cancel }}</a>
+    </div>
+</form>

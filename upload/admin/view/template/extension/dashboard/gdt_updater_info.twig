@@ -1,19 +1,120 @@
-<div class="panel panel-default">
-    <div class="panel-heading">
-        <h3 class="panel-title"><i class="fa fa-refresh"></i> {{ heading_title }}</h3>
+<style>
+.tile-update {
+    background: #fff;
+    border: 1px solid #dcdcdc;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    position: relative;
+    min-height: 260px;
+    transition: box-shadow 0.2s ease;
+}
+
+.tile-update:hover {
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+.tile-update .tile-heading {
+    font-size: 15px;
+    font-weight: 600;
+    color: #222;
+    margin-bottom: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.tile-update .badge-circle {
+    background: #007bff;
+    color: #fff;
+    font-size: 12px;
+    font-weight: bold;
+    line-height: 20px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    text-align: center;
+    border-radius: 50%;
+}
+
+.tile-update .tile-body {
+    text-align: center;
+}
+
+.tile-update .tile-body i.icon-big {
+    font-size: 40px;
+    margin-bottom: 12px;
+    color: #007bff;
+}
+
+.tile-update .tile-body h5 {
+    margin-top: 10px;
+    font-weight: 600;
+    color: #007bff;
+}
+
+.tile-update .tile-body p {
+    color: #666;
+    font-size: 13px;
+    margin-bottom: 16px;
+}
+
+.tile-update .btn-view {
+    display: inline-block;
+    /* margin-top: 5px; */
+    padding: 0px 16px;
+    border: 1px solid #007bff;
+    background: #fff;
+    color: #007bff;
+    border-radius: 4px;
+    font-size: 13px;
+    /* text-decoration: none; */
+    font-weight: 500;
+}
+
+.tile-update .btn-view:hover {
+    background-color: #007bff;
+    color: #fff;
+    text-decoration: none;
+}
+
+.tile-update .status-message {
+    font-size: 12px;
+    color: #999;
+    margin-top: 10px;
+}
+.btn-view {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 16px;
+}
+</style>
+
+<div class="tile-update">
+    <div class="tile-heading">
+        <span>Обновления модулей</span>
+        {% if not no_updates %}
+            <span class="badge-circle">{{ total_updates }}</span>
+        {% endif %}
     </div>
-    <div class="panel-body">
-        {% if updates %}
-            <ul>
-                {% for update in updates %}
-                    <li>
-                        <strong>{{ update.name }}</strong> ({{ update.current_version }}) → {{ update.new_version }}
-                        <a href="{{ update.update_url }}" class="btn btn-warning btn-sm">{{ text_update }}</a>
-                    </li>
-                {% endfor %}
-            </ul>
+
+    <div class="tile-body">
+        {% if no_updates %}
+            <i class="fa fa-check-circle text-success icon-big"></i>
+            <h5 class="text-success">Все модули обновлены</h5>
+            <p>Установлены последние версии всех модулей.</p>
         {% else %}
-            <p>{{ text_no_updates }}</p>
+            <i class="fa fa-download"></i>
+            <h5>Найдено {{ total_updates }} обновлений</h5>
+            <p>Доступны новые версии модулей для установки.</p>
+        {% endif %}
+
+        {% if href_check_updates %}
+<a href="{{ href_check_updates }}" class="btn-view">
+    <i class="fa fa-list-ul"></i> Просмотреть обновления
+</a>
         {% endif %}
     </div>
 </div>

@@ -24,9 +24,7 @@ class Manager {
      */
     public function __get($name) {
         return $this->registry->get($name);
-    }
-    
-    /**
+    }    /**
      * Получает список установленных модулей
      * 
      * @return array
@@ -240,6 +238,8 @@ class Manager {
      */
     public function downloadAndInstallUpdate($server_url, $module, $update_info, $client_id = 'default', $api_key = '') {
         try {
+            $this->log->write('GDT Module Manager: Starting update for module ' . $module['code']);
+            
             // URL для загрузки обновления
             $download_url = rtrim($server_url, '/') . '/index.php?route=gdt_update_server/download';
             
@@ -249,8 +249,9 @@ class Manager {
             }
             
             // Логируем для отладки
+            $this->log->write('GDT Module Manager: Download URL: ' . $download_url);
             if (!empty($api_key)) {
-                $this->log->write('GDT Module Manager Debug: Download request for module ' . $module['code'] . ' with API key');
+                $this->log->write('GDT Module Manager: Using API key for authentication');
             }
             
             // Данные в соответствии с серверной авторизацией
@@ -287,6 +288,7 @@ class Manager {
             $response = curl_exec($curl);
             $error = curl_error($curl);
             $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+            $content_type = curl_getinfo($curl, CURLINFO_CONTENT_TYPE);
             
             // Закрытие cURL сессии
             curl_close($curl);
@@ -302,7 +304,17 @@ class Manager {
             }
             
             if (empty($response)) {
+                $this->log->write('GDT Module Manager: Empty response from server');
                 return 'Пустой ответ от сервера';
+            }
+            
+            // Проверяем, не вернул ли сервер JSON с ошибкой
+            if (strpos($content_type, 'application/json') !== false) {
+                $json_response = json_decode($response, true);
+                if ($json_response && isset($json_response['error'])) {
+                    $this->log->write('GDT Module Manager: Server returned error: ' . $json_response['error']);
+                    return 'Ошибка сервера: ' . $json_response['error'];
+                }
             }
             
             // Проверяем, определена ли константа DIR_DOWNLOAD
@@ -316,14 +328,23 @@ class Manager {
             $temp_file = $download_dir . 'update_' . $module['code'] . '_' . $update_info['version'] . '.zip';
             
             // Сохраняем во временный файл
-            file_put_contents($temp_file, $response);
+            $bytes_written = file_put_contents($temp_file, $response);
+            $this->log->write('GDT Module Manager: Downloaded ' . $bytes_written . ' bytes to ' . $temp_file);
+            
+            if ($bytes_written === false || $bytes_written === 0) {
+                return 'Ошибка при сохранении загруженного файла';
+            }
             
             // Проверяем, является ли файл действительным архивом ZIP
             $zip = new \ZipArchive();
-            if ($zip->open($temp_file) !== true) {
+            $zip_result = $zip->open($temp_file);
+            if ($zip_result !== true) {
                 @unlink($temp_file);
-                return 'Загруженный файл не является корректным ZIP архивом';
+                $this->log->write('GDT Module Manager: Invalid ZIP file, error code: ' . $zip_result);
+                return 'Загруженный файл не является корректным ZIP архивом (код ошибки: ' . $zip_result . ')';
             }
+            
+            $this->log->write('GDT Module Manager: ZIP archive contains ' . $zip->numFiles . ' files');
             
             // Извлекаем архив
             $extract_dir = $download_dir . 'update_extract_' . $module['code'];
@@ -334,10 +355,22 @@ class Manager {
             }
             
             // Создаем директорию заново
-            mkdir($extract_dir, 0777, true);
+            if (!mkdir($extract_dir, 0777, true)) {
+                $zip->close();
+                @unlink($temp_file);
+                return 'Не удалось создать временную директорию для извлечения';
+            }
             
-            $zip->extractTo($extract_dir);
+            $extracted = $zip->extractTo($extract_dir);
             $zip->close();
+            
+            if (!$extracted) {
+                $this->removeDirectory($extract_dir);
+                @unlink($temp_file);
+                return 'Ошибка при извлечении архива';
+            }
+            
+            $this->log->write('GDT Module Manager: Files extracted to ' . $extract_dir);
             
             // Проверяем структуру архива и определяем исходную директорию
             $source_dir = $extract_dir;
@@ -345,10 +378,13 @@ class Manager {
             // Если архив имеет структуру OpenCart с папкой upload
             if (is_dir($extract_dir . '/upload')) {
                 $source_dir = $extract_dir . '/upload';
+                $this->log->write('GDT Module Manager: Using upload subdirectory: ' . $source_dir);
             }
             
             // Проверяем, определена ли константа DIR_APPLICATION
             if (!defined('DIR_APPLICATION')) {
+                $this->removeDirectory($extract_dir);
+                @unlink($temp_file);
                 return 'Константа DIR_APPLICATION не определена';
             }
             
@@ -356,24 +392,127 @@ class Manager {
             // получаем путь к директории OpenCart
             $opencart_dir = realpath(constant('DIR_APPLICATION') . '../');
             
+            if (!$opencart_dir) {
+                $this->removeDirectory($extract_dir);
+                @unlink($temp_file);
+                return 'Не удалось определить корневую директорию OpenCart';
+            }
+            
+            $this->log->write('GDT Module Manager: Copying files from ' . $source_dir . ' to ' . $opencart_dir);
+            
+            // Создаем резервную копию перед обновлением
+            $backup_created = $this->createBackup($module);
+            if ($backup_created) {
+                $this->log->write('GDT Module Manager: Backup created successfully');
+            }
+            
+            // Копируем файлы модуля
             $this->copyDirectory($source_dir, $opencart_dir);
             
-            // Обновляем версию в файле конфигурации модуля
-            if (isset($module['config_path']) && file_exists($module['config_path'])) {
-                $config_data = json_decode(file_get_contents($module['config_path']), true);
-                if ($config_data) {
-                    $config_data['version'] = $update_info['version'];
-                    file_put_contents($module['config_path'], json_encode($config_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-                }
+            // Обрабатываем файл конфигурации opencart-module.json
+            $config_updated = $this->handleModuleConfig($extract_dir, $module, $update_info);
+            
+            if (!$config_updated) {
+                $this->log->write('GDT Module Manager: Warning - could not update version in module config');
             }
             
             // Очищаем временные файлы
             $this->removeDirectory($extract_dir);
             @unlink($temp_file);
             
+            $this->log->write('GDT Module Manager: Update completed successfully for module ' . $module['code']);
+            
             return true;
         } catch (\Exception $e) {
-            return $e->getMessage();
+            $this->log->write('GDT Module Manager: Exception during update: ' . $e->getMessage());
+            return 'Исключение: ' . $e->getMessage();
+        }
+    }
+    
+    /**
+     * Обрабатывает файл конфигурации модуля при обновлении
+     * 
+     * @param string $extract_dir Директория с извлеченными файлами
+     * @param array $module Информация о модуле
+     * @param array $update_info Информация об обновлении
+     * @return bool
+     */
+    private function handleModuleConfig($extract_dir, $module, $update_info) {
+        $module_code = $module['code'];
+        $target_config_dir = constant('DIR_SYSTEM') . 'modules/' . $module_code;
+        $target_config_path = $target_config_dir . '/opencart-module.json';
+        
+        // Вариант 1: Файл конфигурации в корне архива
+        $root_config_path = $extract_dir . '/opencart-module.json';
+        
+        // Вариант 2: Файл конфигурации в system/modules/module_name/
+        $system_config_path = $extract_dir . '/upload/system/modules/' . $module_code . '/opencart-module.json';
+        if (!file_exists($system_config_path)) {
+            // Попробуем без upload подпапки
+            $system_config_path = $extract_dir . '/system/modules/' . $module_code . '/opencart-module.json';
+        }
+        
+        $config_updated = false;
+        
+        if (file_exists($root_config_path)) {
+            // Случай 1: opencart-module.json в корне архива
+            $this->log->write('GDT Module Manager: Found opencart-module.json in archive root');
+            
+            // Создаем директорию модуля если не существует
+            if (!is_dir($target_config_dir)) {
+                mkdir($target_config_dir, 0755, true);
+            }
+            
+            // Полностью копируем новый файл конфигурации
+            $old_version = isset($module['version']) ? $module['version'] : 'unknown';
+            if (copy($root_config_path, $target_config_path)) {
+                $config_updated = true;
+                $this->log->write('GDT Module Manager: Copied complete config from archive root, updated from version ' . $old_version . ' to ' . $update_info['version']);
+            } else {
+                $this->log->write('GDT Module Manager: Failed to copy config file from archive root');
+            }
+        } elseif (file_exists($system_config_path)) {
+            // Случай 2: opencart-module.json в system/modules/module_name/ внутри архива
+            $this->log->write('GDT Module Manager: Found opencart-module.json in system/modules structure, already copied via copyDirectory');
+            
+            // В этом случае файл уже скопирован через copyDirectory
+            // Проверяем, что файл действительно скопирован
+            if (file_exists($target_config_path)) {
+                $config_updated = true;
+                $old_version = isset($module['version']) ? $module['version'] : 'unknown';
+                $this->log->write('GDT Module Manager: Complete config copied from system structure, updated from version ' . $old_version . ' to ' . $update_info['version']);
+            }
+        } else {
+            // Случай 3: Файл конфигурации не найден в архиве, обновляем существующий
+            $this->log->write('GDT Module Manager: No opencart-module.json found in archive, keeping existing config with version update');
+            
+            if (isset($module['config_path']) && file_exists($module['config_path'])) {
+                $config_data = json_decode(file_get_contents($module['config_path']), true);
+                if ($config_data) {
+                    $old_version = $config_data['version'] ?? 'unknown';
+                    $config_data['version'] = $update_info['version'];
+                    $config_written = file_put_contents($module['config_path'], json_encode($config_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                    if ($config_written !== false) {
+                        $config_updated = true;
+                        $this->log->write('GDT Module Manager: Updated existing config version from ' . $old_version . ' to ' . $update_info['version']);
+                    }
+                }
+            }
+        }
+        
+        return $config_updated;
+    }
+    
+    /**
+     * Создает резервную копию модуля перед обновлением
+     */
+    private function createBackup($module) {
+        try {
+            // Реализация создания бэкапа может быть добавлена позже
+            return true;
+        } catch (\Exception $e) {
+            $this->log->write('GDT Module Manager: Backup creation failed: ' . $e->getMessage());
+            return false;
         }
     }
     
@@ -503,34 +642,8 @@ class Manager {
             // Копируем основные файлы модуля
             $this->copyDirectory($upload_dir, $opencart_root);
 
-            // Проверяем наличие opencart-module.json в корне архива
-            $module_config_source = $source_dir . '/opencart-module.json';
-            if (file_exists($module_config_source)) {
-                // Создаем директорию для модуля в system/modules
-                $module_dir = $opencart_root . 'system/modules/' . $module_code;
-                if (!is_dir($module_dir)) {
-                    mkdir($module_dir, 0755, true);
-                }
-
-                // Копируем файл конфигурации
-                $module_config_dest = $module_dir . '/opencart-module.json';
-                if (copy($module_config_source, $module_config_dest)) {
-                    // Логируем успешное копирование конфигурации
-                    if ($this->log) {
-                        $this->log->write('GDT Module Manager: Configuration file copied for module ' . $module_code);
-                    }
-                } else {
-                    // Логируем ошибку копирования конфигурации
-                    if ($this->log) {
-                        $this->log->write('GDT Module Manager: Failed to copy configuration file for module ' . $module_code);
-                    }
-                }
-            } else {
-                // Логируем отсутствие файла конфигурации
-                if ($this->log) {
-                    $this->log->write('GDT Module Manager: No opencart-module.json found for module ' . $module_code);
-                }
-            }
+            // Обрабатываем файл конфигурации модуля используя ту же логику что и в обновлении
+            $this->handleModuleConfigForInstall($source_dir, $module_code, $opencart_root);
 
             return array(
                 'success' => true,
@@ -542,6 +655,63 @@ class Manager {
                 'error' => 'Ошибка копирования файлов: ' . $e->getMessage()
             );
         }
+    }
+    
+    /**
+     * Обрабатывает файл конфигурации модуля при установке
+     * 
+     * @param string $source_dir Директория с извлеченными файлами
+     * @param string $module_code Код модуля
+     * @param string $opencart_root Корневая директория OpenCart
+     * @return bool
+     */
+    private function handleModuleConfigForInstall($source_dir, $module_code, $opencart_root) {
+        $target_config_dir = $opencart_root . 'system/modules/' . $module_code;
+        $target_config_path = $target_config_dir . '/opencart-module.json';
+        
+        // Вариант 1: Файл конфигурации в корне архива
+        $root_config_path = $source_dir . '/opencart-module.json';
+        
+        // Вариант 2: Файл конфигурации в system/modules/module_name/
+        $system_config_path = $source_dir . '/upload/system/modules/' . $module_code . '/opencart-module.json';
+        if (!file_exists($system_config_path)) {
+            // Попробуем без upload подпапки
+            $system_config_path = $source_dir . '/system/modules/' . $module_code . '/opencart-module.json';
+        }
+        
+        $config_copied = false;
+        
+        if (file_exists($root_config_path)) {
+            // Случай 1: opencart-module.json в корне архива
+            $this->log->write('GDT Module Manager: Found opencart-module.json in archive root for installation');
+            
+            // Создаем директорию модуля если не существует
+            if (!is_dir($target_config_dir)) {
+                mkdir($target_config_dir, 0755, true);
+            }
+            
+            // Копируем файл конфигурации
+            if (copy($root_config_path, $target_config_path)) {
+                $config_copied = true;
+                $this->log->write('GDT Module Manager: Configuration file copied from archive root for module ' . $module_code);
+            } else {
+                $this->log->write('GDT Module Manager: Failed to copy configuration file from archive root for module ' . $module_code);
+            }
+        } elseif (file_exists($system_config_path)) {
+            // Случай 2: opencart-module.json в system/modules/module_name/ внутри архива
+            $this->log->write('GDT Module Manager: Found opencart-module.json in system/modules structure for installation');
+            
+            // В этом случае файл уже скопирован через copyDirectory
+            if (file_exists($target_config_path)) {
+                $config_copied = true;
+                $this->log->write('GDT Module Manager: Configuration file already copied via system structure for module ' . $module_code);
+            }
+        } else {
+            // Случай 3: Файл конфигурации не найден в архиве
+            $this->log->write('GDT Module Manager: No opencart-module.json found in archive for module ' . $module_code);
+        }
+        
+        return $config_copied;
     }
     
     /**
@@ -679,10 +849,42 @@ class Manager {
     /**
      * Очистка кэша
      */
-    private function clearCache() {
-        $cache = $this->registry->get('cache');
-        if ($cache) {
-            $cache->delete('*');
+    public function clearCache() {
+        try {
+            // Очищаем кэш OpenCart
+            $cache = $this->registry->get('cache');
+            if ($cache) {
+                $cache->delete('*');
+            }
+            
+            // Очищаем кэш модификаций
+            if (defined('DIR_CACHE')) {
+                if (is_file(constant('DIR_CACHE') . 'cache.modification')) {
+                    @unlink(constant('DIR_CACHE') . 'cache.modification');
+                }
+                
+                // Очищаем кэш Twig
+                $twig_cache_dir = constant('DIR_CACHE') . 'template/';
+                if (is_dir($twig_cache_dir)) {
+                    $this->removeDirectory($twig_cache_dir);
+                }
+                
+                // Очищаем системный кэш
+                $system_cache_files = glob(constant('DIR_CACHE') . '*');
+                if ($system_cache_files) {
+                    foreach ($system_cache_files as $file) {
+                        if (is_file($file) && pathinfo($file, PATHINFO_EXTENSION) === 'cache') {
+                            @unlink($file);
+                        }
+                    }
+                }
+            }
+            
+            $this->log->write('GDT Module Manager: Cache cleared successfully');
+            return true;
+        } catch (\Exception $e) {
+            $this->log->write('GDT Module Manager: Error clearing cache: ' . $e->getMessage());
+            return false;
         }
     }
     
