@@ -175,10 +175,18 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
      * Получение рекомендуемых модулей
      */
     public function getFeaturedModules() {
-        $this->load->model('extension/module/gdt_update_server');
-        
         try {
-            $modules = $this->model_extension_module_gdt_update_server->getFeaturedModules();
+            // Получаем URL сервера модулей
+            $server_url = $this->config->get('module_gdt_updater_server');
+            if (empty($server_url)) {
+                $server_url = HTTP_SERVER . 'ocm_gdt_update_server';
+            }
+            
+            // Используем manager для получения модулей с сервера
+            $this->load->library('gbitstudio/modules/manager');
+            $manager = new \Gbitstudio\Modules\Manager($this->registry);
+            
+            $modules = $manager->getModulesFromServer($server_url, array('featured' => 1));
             
             $json = array(
                 'success' => true,
@@ -198,10 +206,18 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
      * Получение популярных модулей
      */
     public function getPopularModules() {
-        $this->load->model('extension/module/gdt_update_server');
-        
         try {
-            $modules = $this->model_extension_module_gdt_update_server->getPopularModules();
+            // Получаем URL сервера модулей
+            $server_url = $this->config->get('module_gdt_updater_server');
+            if (empty($server_url)) {
+                $server_url = HTTP_SERVER . 'ocm_gdt_update_server';
+            }
+            
+            // Используем manager для получения модулей с сервера
+            $this->load->library('gbitstudio/modules/manager');
+            $manager = new \Gbitstudio\Modules\Manager($this->registry);
+            
+            $modules = $manager->getModulesFromServer($server_url, array('popular' => 1));
             
             $json = array(
                 'success' => true,
@@ -221,10 +237,18 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
      * Получение новых модулей
      */
     public function getNewestModules() {
-        $this->load->model('extension/module/gdt_update_server');
-        
         try {
-            $modules = $this->model_extension_module_gdt_update_server->getNewestModules();
+            // Получаем URL сервера модулей
+            $server_url = $this->config->get('module_gdt_updater_server');
+            if (empty($server_url)) {
+                $server_url = HTTP_SERVER . 'ocm_gdt_update_server';
+            }
+            
+            // Используем manager для получения модулей с сервера
+            $this->load->library('gbitstudio/modules/manager');
+            $manager = new \Gbitstudio\Modules\Manager($this->registry);
+            
+            $modules = $manager->getModulesFromServer($server_url, array('newest' => 1));
             
             $json = array(
                 'success' => true,
@@ -244,8 +268,6 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
      * Поиск модулей
      */
     public function searchModules() {
-        $this->load->model('extension/module/gdt_update_server');
-        
         $query = isset($this->request->post['query']) ? $this->request->post['query'] : '';
         $category = isset($this->request->post['category']) ? $this->request->post['category'] : '';
         $sort = isset($this->request->post['sort']) ? $this->request->post['sort'] : 'relevance';
@@ -257,7 +279,24 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
             );
         } else {
             try {
-                $modules = $this->model_extension_module_gdt_update_server->searchModules($query, $category, $sort, $price);
+                // Получаем URL сервера модулей
+                $server_url = $this->config->get('module_gdt_updater_server');
+                if (empty($server_url)) {
+                    $server_url = HTTP_SERVER . 'ocm_gdt_update_server';
+                }
+                
+                // Используем manager для поиска модулей на сервере
+                $this->load->library('gbitstudio/modules/manager');
+                $manager = new \Gbitstudio\Modules\Manager($this->registry);
+                
+                $params = array(
+                    'search' => $query,
+                    'category' => $category,
+                    'sort' => $sort,
+                    'price' => $price
+                );
+                
+                $modules = $manager->getModulesFromServer($server_url, $params);
                 
                 $json = array(
                     'success' => true,
