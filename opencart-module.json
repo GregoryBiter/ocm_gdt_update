@@ -1,41 +1,18 @@
 {
-    "module_name": "GDT Updater System",
-    "creator_name": "gregorybiter",
-    "creator_email": "gregorybiter@gmail.com",
-    "code": "gdt_updater",
-    "version": "0.0.3",
-    "description": "OpenCart module update system with server and client components",
-    "provider": "provider/module/gdt_updater/boot",
-    "controller": "admin/controller/extension/module/gdt_updater.php",
     "files": [
         "admin/controller/extension/module/gdt_install_modules.php",
-        "admin/controller/extension/module/gdt_update_server.php",
         "admin/controller/extension/module/gdt_updater.php",
         "admin/language/en-gb/extension/module/gdt_install_modules.php",
-        "admin/language/en-gb/extension/module/gdt_update_server.php",
         "admin/language/en-gb/extension/module/gdt_updater.php",
         "admin/language/ru-ru/extension/module/gdt_install_modules.php",
-        "admin/language/ru-ru/extension/module/gdt_update_server.php",
         "admin/language/ru-ru/extension/module/gdt_updater.php",
         "admin/language/uk-ua/extension/module/gdt_install_modules.php",
-        "admin/language/uk-ua/extension/module/gdt_update_server.php",
         "admin/language/uk-ua/extension/module/gdt_updater.php",
-        "admin/model/extension/module/gdt_update_server.php",
         "admin/view/template/extension/module/gdt_install_modules.twig",
-        "admin/view/template/extension/module/gdt_update_server.twig",
-        "admin/view/template/extension/module/gdt_update_server_modules.twig",
         "admin/view/template/extension/module/gdt_updater.twig",
-        "catalog/controller/gdt_update_server/check.php",
-        "catalog/controller/gdt_update_server/download.php",
-        "catalog/controller/gdt_update_server/modules.php",
-        "catalog/controller/gdt_update_server/sync.php",
-        "catalog/model/extension/module/gdt_update_server.php",
         "system/library/gbitstudio/updater/service/updater.php",
         "system/library/gbitstudio/updater/tools.php",
         "system/modules/gdt_updater/opencart-module.json",
-        "system/modules/test_module/opencart-module.json"
-    ],
-    "delete": [
         "system/modules/test_module/opencart-module.json"
     ]
 }
