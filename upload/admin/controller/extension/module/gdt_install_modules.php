@@ -155,7 +155,8 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
      * Установка модуля
      */
     public function installModule() {
-        $this->load->model('extension/module/gdt_update_server');
+        $this->load->library('gbitstudio/modules/manager');
+        $manager = new \Gbitstudio\Modules\Manager($this->registry);
         
         $module_code = isset($this->request->post['module_code']) ? $this->request->post['module_code'] : '';
         $download_url = isset($this->request->post['download_url']) ? $this->request->post['download_url'] : '';
@@ -166,15 +167,10 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
             );
         } else {
             try {
-                $result = $this->model_extension_module_gdt_update_server->installModule($module_code, $download_url);
-                
-                if ($result['success']) {
+                $result = $manager->installModuleURL($module_code, $download_url);
+                if ($result) {
                     $json = array(
                         'success' => 'Модуль "' . $module_code . '" успешно установлен'
-                    );
-                } else {
-                    $json = array(
-                        'error' => $result['error']
                     );
                 }
             } catch (Exception $e) {

@@ -1,14 +1,14 @@
 <?php
 class ControllerExtensionModuleGdtUpdater extends Controller {
     private $error = array();
-    private $updater;
+    private $manager;
     
     public function __construct($registry) {
         parent::__construct($registry);
         
-        // Загружаем сервис обновления
-        $this->load->library('gbitstudio/updater/service/updater');
-        $this->updater = new \Gbitstudio\Updater\Service\Updater($registry);
+        // Загружаем объединенный сервис управления модулями
+        $this->load->library('gbitstudio/modules/manager');
+        $this->manager = new \Gbitstudio\Modules\Manager($registry);
     }
     
     public function index() {
@@ -74,7 +74,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
      */
     private function getModulesData() {
         // Получаем список установленных модулей
-        $installed_modules = $this->updater->getInstalledModules();
+        $installed_modules = $this->manager->getInstalledModules();
         
         if (empty($installed_modules)) {
             return array();
@@ -116,7 +116,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
                 $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
                 
                 // Проверяем обновления
-                $update_info = $this->updater->checkModuleUpdate($server_url, $module, '', $api_key);
+                $update_info = $this->manager->checkModuleUpdate($server_url, $module, '', $api_key);
                 
                 if ($update_info && !isset($update_info['error'])) {
                     $module_data['has_update'] = true;
@@ -179,7 +179,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
         $json = array();
         
         // Получаем список установленных модулей
-        $installed_modules = $this->updater->getInstalledModules();
+        $installed_modules = $this->manager->getInstalledModules();
         
         if (empty($installed_modules)) {
             $json['error'] = $this->language->get('error_no_modules');
@@ -214,7 +214,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
                 $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
                 
                 // Проверяем обновления
-                $update_info = $this->updater->checkModuleUpdate($server_url, $module, '', $api_key);
+                $update_info = $this->manager->checkModuleUpdate($server_url, $module, '', $api_key);
                 
                 if (is_array($update_info) && isset($update_info['error'])) {
                     // Обрабатываем ошибки curl/http
@@ -266,7 +266,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
             $json['error'] = $this->language->get('error_server');
         } else {
             // Получаем список установленных модулей
-            $modules = $this->updater->getInstalledModules();
+            $modules = $this->manager->getInstalledModules();
             
             if (!empty($modules)) {
                 $json['modules'] = array();
@@ -275,7 +275,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
                     // Получаем API-ключ
                     $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
                     
-                    $update_info = $this->updater->checkModuleUpdate($server_url, $module, '', $api_key);
+                    $update_info = $this->manager->checkModuleUpdate($server_url, $module, '', $api_key);
                     
                     // Проверяем на ошибки curl
                     if (is_array($update_info) && isset($update_info['error'])) {
@@ -337,14 +337,14 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
                 $json['error'] = $this->language->get('error_server');
             } else {
                 // Получаем информацию о модуле
-                $module = $this->updater->getModuleByCode($code);
+                $module = $this->manager->getModuleByCode($code);
                 
                 if ($module) {
                     // Получаем API-ключ
                     $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
                     
                     // Проверяем обновление
-                    $update_info = $this->updater->checkModuleUpdate($server_url, $module, '', $api_key);
+                    $update_info = $this->manager->checkModuleUpdate($server_url, $module, '', $api_key);
                     
                     // Проверяем на ошибки curl
                     if (is_array($update_info) && isset($update_info['error'])) {
@@ -358,7 +358,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
                         $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
                         
                         // Скачиваем и устанавливаем обновление
-                        $result = $this->updater->downloadAndInstallUpdate($server_url, $module, $update_info, '', $api_key);
+                        $result = $this->manager->downloadAndInstallUpdate($server_url, $module, $update_info, '', $api_key);
                         
                         if ($result === true) {
                             $json['success'] = sprintf($this->language->get('text_update_success'), $module['name']);
