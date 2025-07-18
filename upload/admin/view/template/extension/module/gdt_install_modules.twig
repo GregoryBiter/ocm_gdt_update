@@ -6,7 +6,7 @@
         <button type="button" id="button-refresh" data-loading-text="Загрузка..." class="btn btn-info"><i class="fa fa-refresh"></i> Обновить список</button>
         <a href="{{ back }}" data-toggle="tooltip" title="Назад" class="btn btn-default"><i class="fa fa-reply"></i></a>
       </div>
-      <h1>Установка модулей</h1>
+      <h1>{{ page_title|default('Установка модулей') }}</h1>
       <ul class="breadcrumb">
         {% for breadcrumb in breadcrumbs %}
         <li><a href="{{ breadcrumb.href }}">{{ breadcrumb.text }}</a></li>
@@ -18,147 +18,115 @@
     <!-- Сообщения -->
     <div id="alert-container"></div>
     
-    <!-- Навигационные вкладки -->
-    <ul class="nav nav-tabs" role="tablist">
-      <li role="presentation" class="active">
-        <a href="#featured" aria-controls="featured" role="tab" data-toggle="tab">
-          <i class="fa fa-star"></i> Рекомендуемые
-        </a>
-      </li>
-      <li role="presentation">
-        <a href="#popular" aria-controls="popular" role="tab" data-toggle="tab">
-          <i class="fa fa-trophy"></i> Популярные
-        </a>
-      </li>
-      <li role="presentation">
-        <a href="#newest" aria-controls="newest" role="tab" data-toggle="tab">
-          <i class="fa fa-clock-o"></i> Новые
-        </a>
-      </li>
-      <li role="presentation">
-        <a href="#search" aria-controls="search" role="tab" data-toggle="tab">
-          <i class="fa fa-search"></i> Поиск
-        </a>
-      </li>
-    </ul>
-    
-    <!-- Содержимое вкладок -->
-    <div class="tab-content">
-      
-      <!-- Рекомендуемые модули -->
-      <div role="tabpanel" class="tab-pane active" id="featured">
-        <div class="panel panel-default">
-          <div class="panel-heading">
-            <h3 class="panel-title">
-              <i class="fa fa-star"></i> Рекомендуемые модули
-            </h3>
+    <!-- Навигация между страницами -->
+    <div class="panel panel-default">
+      <div class="panel-body">
+        <div class="btn-group" role="group">
+          <a href="{{ store_url }}" class="btn btn-default {% if current_page == 'store' %}active{% endif %}">
+            <i class="fa fa-shopping-cart"></i> Магазин модулей
+          </a>
+          <a href="{{ featured_url }}" class="btn btn-default {% if current_page == 'featured' %}active{% endif %}">
+            <i class="fa fa-star"></i> Рекомендуемые
+          </a>
+          <a href="{{ popular_url }}" class="btn btn-default {% if current_page == 'popular' %}active{% endif %}">
+            <i class="fa fa-trophy"></i> Популярные
+          </a>
+          <a href="{{ newest_url }}" class="btn btn-default {% if current_page == 'newest' %}active{% endif %}">
+            <i class="fa fa-clock-o"></i> Новые
+          </a>
+          <a href="{{ search_url }}" class="btn btn-default {% if current_page == 'search' %}active{% endif %}">
+            <i class="fa fa-search"></i> Поиск
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Контент страницы -->
+    <div class="panel panel-default">
+      <div class="panel-heading">
+        <h3 class="panel-title">
+          {% if current_page == 'store' %}
+            <i class="fa fa-shopping-cart"></i> {{ page_title|default('Магазин модулей') }}
+          {% elseif current_page == 'featured' %}
+            <i class="fa fa-star"></i> {{ page_title|default('Рекомендуемые модули') }}
+          {% elseif current_page == 'popular' %}
+            <i class="fa fa-trophy"></i> {{ page_title|default('Популярные модули') }}
+          {% elseif current_page == 'newest' %}
+            <i class="fa fa-clock-o"></i> {{ page_title|default('Новые модули') }}
+          {% elseif current_page == 'search' %}
+            <i class="fa fa-search"></i> {{ page_title|default('Поиск модулей') }}
+          {% else %}
+            <i class="fa fa-puzzle-piece"></i> {{ page_title|default('Установка модулей') }}
+          {% endif %}
+        </h3>
+      </div>
+      <div class="panel-body">
+        {% if page_description %}
+        <p class="text-muted">{{ page_description }}</p>
+        {% endif %}
+        
+        {% if current_page == 'search' or current_page == 'store' %}
+        <!-- Форма поиска -->
+        <div class="search-form">
+          <div class="row">
+            <div class="col-md-8">
+              <input type="text" id="search-input" class="form-control" placeholder="Введите название модуля или ключевые слова...">
+            </div>
+            <div class="col-md-4">
+              <button type="button" id="search-button" class="btn btn-primary btn-block">
+                <i class="fa fa-search"></i> {{ current_page == 'store' ? 'Поиск в магазине' : 'Найти модули' }}
+              </button>
+            </div>
           </div>
-          <div class="panel-body">
-            <div id="featured-modules-content">
-              <div class="text-center loading-content">
-                <i class="fa fa-spinner fa-spin fa-2x"></i>
-                <p>Загрузка рекомендуемых модулей...</p>
-              </div>
+          <div class="row" style="margin-top: 15px;">
+            <div class="col-md-4">
+              <select id="search-category" class="form-control">
+                <option value="">Все категории</option>
+                <option value="ecommerce">Электронная коммерция</option>
+                <option value="shipping">Доставка</option>
+                <option value="payment">Платежи</option>
+                <option value="seo">SEO</option>
+                <option value="analytics">Аналитика</option>
+                <option value="marketing">Маркетинг</option>
+                <option value="design">Дизайн</option>
+                <option value="tools">Инструменты</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <select id="search-sort" class="form-control">
+                <option value="relevance">По релевантности</option>
+                <option value="popularity">По популярности</option>
+                <option value="rating">По рейтингу</option>
+                <option value="date">По дате</option>
+                <option value="name">По названию</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <select id="search-price" class="form-control">
+                <option value="">Любая цена</option>
+                <option value="free">Бесплатные</option>
+                <option value="paid">Платные</option>
+              </select>
             </div>
           </div>
         </div>
-      </div>
-      
-      <!-- Популярные модули -->
-      <div role="tabpanel" class="tab-pane" id="popular">
-        <div class="panel panel-default">
-          <div class="panel-heading">
-            <h3 class="panel-title">
-              <i class="fa fa-trophy"></i> Популярные модули
-            </h3>
+        {% endif %}
+        
+        <!-- Контейнер для модулей -->
+        <div id="modules-container">
+          {% if current_page != 'search' %}
+          <div class="text-center loading-content">
+            <i class="fa fa-spinner fa-spin fa-2x"></i>
+            <p>Загрузка {{ page_title|lower }}...</p>
           </div>
-          <div class="panel-body">
-            <div id="popular-modules-content">
-              <div class="text-center loading-content">
-                <i class="fa fa-spinner fa-spin fa-2x"></i>
-                <p>Загрузка популярных модулей...</p>
-              </div>
-            </div>
+          {% else %}
+          <div class="text-center">
+            <i class="fa fa-search fa-2x"></i>
+            <p>Введите поисковый запрос для поиска модулей</p>
           </div>
+          {% endif %}
         </div>
       </div>
-      
-      <!-- Новые модули -->
-      <div role="tabpanel" class="tab-pane" id="newest">
-        <div class="panel panel-default">
-          <div class="panel-heading">
-            <h3 class="panel-title">
-              <i class="fa fa-clock-o"></i> Новые модули
-            </h3>
-          </div>
-          <div class="panel-body">
-            <div id="newest-modules-content">
-              <div class="text-center loading-content">
-                <i class="fa fa-spinner fa-spin fa-2x"></i>
-                <p>Загрузка новых модулей...</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Поиск модулей -->
-      <div role="tabpanel" class="tab-pane" id="search">
-        <div class="panel panel-default">
-          <div class="panel-heading">
-            <h3 class="panel-title">
-              <i class="fa fa-search"></i> Поиск модулей
-            </h3>
-          </div>
-          <div class="panel-body">
-            <div class="search-form">
-              <div class="row">
-                <div class="col-md-8">
-                  <input type="text" id="search-input" class="form-control" placeholder="Введите название модуля или ключевые слова...">
-                </div>
-                <div class="col-md-4">
-                  <button type="button" id="search-button" class="btn btn-primary btn-block">
-                    <i class="fa fa-search"></i> Найти модули
-                  </button>
-                </div>
-              </div>
-              <div class="row" style="margin-top: 15px;">
-                <div class="col-md-4">
-                  <select id="search-category" class="form-control">
-                    <option value="">Все категории</option>
-                    <option value="ecommerce">Электронная коммерция</option>
-                    <option value="shipping">Доставка</option>
-                    <option value="payment">Платежи</option>
-                    <option value="seo">SEO</option>
-                    <option value="analytics">Аналитика</option>
-                    <option value="marketing">Маркетинг</option>
-                    <option value="design">Дизайн</option>
-                    <option value="tools">Инструменты</option>
-                  </select>
-                </div>
-                <div class="col-md-4">
-                  <select id="search-sort" class="form-control">
-                    <option value="relevance">По релевантности</option>
-                    <option value="popularity">По популярности</option>
-                    <option value="rating">По рейтингу</option>
-                    <option value="date">По дате</option>
-                    <option value="name">По названию</option>
-                  </select>
-                </div>
-                <div class="col-md-4">
-                  <select id="search-price" class="form-control">
-                    <option value="">Любая цена</option>
-                    <option value="free">Бесплатные</option>
-                    <option value="paid">Платные</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div id="search-results-content" style="margin-top: 20px;"></div>
-          </div>
-        </div>
-      </div>
-      
     </div>
   </div>
 </div>
@@ -469,13 +437,15 @@
 <script type="text/javascript"><!--
 // URL-адреса для AJAX запросов
 var ajaxUrls = {
-    getFeaturedModules: '{{ get_featured_modules_url }}',
-    getPopularModules: '{{ get_popular_modules_url }}',
-    getNewestModules: '{{ get_newest_modules_url }}',
-    searchModules: '{{ search_modules_url }}',
-    installModule: '{{ install_module_url }}'
+    getFeaturedModules: '{{ get_modules_url|default("") }}',
+    getPopularModules: '{{ get_modules_url|default("") }}',
+    getNewestModules: '{{ get_modules_url|default("") }}',
+    getStoreModules: '{{ get_modules_url|default("") }}',
+    searchModules: '{{ search_modules_url|default("") }}',
+    installModule: '{{ install_module_url|default("") }}'
 };
 
+var currentPage = '{{ current_page|default("") }}';
 var userToken = '{{ user_token }}';
 
 // Функция для отображения уведомлений
@@ -496,10 +466,14 @@ function showAlert(type, message) {
     }, 5000);
 }
 
-// Загрузка модулей по категориям
-function loadModules(category, containerId) {
+// Загрузка модулей для текущей страницы
+function loadModules() {
     var url = '';
-    switch(category) {
+    
+    switch(currentPage) {
+        case 'store':
+            url = ajaxUrls.getStoreModules;
+            break;
         case 'featured':
             url = ajaxUrls.getFeaturedModules;
             break;
@@ -509,22 +483,30 @@ function loadModules(category, containerId) {
         case 'newest':
             url = ajaxUrls.getNewestModules;
             break;
+        default:
+            return;
     }
     
-    if (!url) return;
+    if (!url) {
+        $('#modules-container').html('<div class="no-modules"><i class="fa fa-exclamation-triangle"></i><h3>Ошибка</h3><p>URL для загрузки модулей не найден</p></div>');
+        return;
+    }
     
     $.ajax({
         url: url,
         dataType: 'json',
         success: function(json) {
             if (json.error) {
-                $('#' + containerId).html('<div class="no-modules"><i class="fa fa-exclamation-triangle"></i><h3>Ошибка загрузки</h3><p>' + json.error + '</p></div>');
+                $('#modules-container').html('<div class="no-modules"><i class="fa fa-exclamation-triangle"></i><h3>Ошибка загрузки</h3><p>' + json.error + '</p></div>');
             } else if (json.modules) {
-                renderModules(json.modules, containerId, category);
+                renderModules(json.modules, currentPage);
+            } else {
+                $('#modules-container').html('<div class="no-modules"><i class="fa fa-puzzle-piece"></i><h3>Модули не найдены</h3><p>Нет доступных модулей в данной категории</p></div>');
             }
         },
-        error: function() {
-            $('#' + containerId).html('<div class="no-modules"><i class="fa fa-exclamation-triangle"></i><h3>Ошибка подключения</h3><p>Не удалось загрузить список модулей с сервера</p></div>');
+        error: function(xhr, ajaxOptions, thrownError) {
+            console.log('AJAX Error:', xhr.status, thrownError);
+            $('#modules-container').html('<div class="no-modules"><i class="fa fa-exclamation-triangle"></i><h3>Ошибка подключения</h3><p>Не удалось загрузить список модулей с сервера. Код ошибки: ' + xhr.status + '</p></div>');
         }
     });
 }
@@ -541,10 +523,20 @@ function searchModules() {
         return;
     }
     
-    $('#search-results-content').html('<div class="text-center loading-content"><i class="fa fa-spinner fa-spin fa-2x"></i><p>Поиск модулей...</p></div>');
+    $('#modules-container').html('<div class="text-center loading-content"><i class="fa fa-spinner fa-spin fa-2x"></i><p>Поиск модулей...</p></div>');
+    
+    // Определяем URL для поиска в зависимости от текущей страницы
+    var searchUrl;
+    if (currentPage === 'store') {
+        // Для страницы "Магазин модулей" используем поиск во внешнем API
+        searchUrl = ajaxUrls.searchModules.replace('/searchModules', '/searchStoreModules');
+    } else {
+        // Для других страниц используем обычный поиск
+        searchUrl = ajaxUrls.searchModules;
+    }
     
     $.ajax({
-        url: ajaxUrls.searchModules,
+        url: searchUrl,
         type: 'POST',
         data: {
             query: query,
@@ -556,19 +548,21 @@ function searchModules() {
         dataType: 'json',
         success: function(json) {
             if (json.error) {
-                $('#search-results-content').html('<div class="no-modules"><i class="fa fa-exclamation-triangle"></i><h3>Ошибка поиска</h3><p>' + json.error + '</p></div>');
+                $('#modules-container').html('<div class="no-modules"><i class="fa fa-exclamation-triangle"></i><h3>Ошибка поиска</h3><p>' + json.error + '</p></div>');
             } else if (json.modules) {
-                renderModules(json.modules, 'search-results-content', 'search');
+                renderModules(json.modules, 'search');
+            } else {
+                $('#modules-container').html('<div class="no-modules"><i class="fa fa-puzzle-piece"></i><h3>Модули не найдены</h3><p>По вашему запросу ничего не найдено</p></div>');
             }
         },
-        error: function() {
-            $('#search-results-content').html('<div class="no-modules"><i class="fa fa-exclamation-triangle"></i><h3>Ошибка поиска</h3><p>Не удалось выполнить поиск модулей</p></div>');
+        error: function(xhr, ajaxOptions, thrownError) {
+            $('#modules-container').html('<div class="no-modules"><i class="fa fa-exclamation-triangle"></i><h3>Ошибка поиска</h3><p>Не удалось выполнить поиск модулей</p></div>');
         }
     });
 }
 
 // Отображение модулей
-function renderModules(modules, containerId, category) {
+function renderModules(modules, category) {
     var html = '';
     
     if (modules.length === 0) {
@@ -587,12 +581,12 @@ function renderModules(modules, containerId, category) {
             html += '<div class="module-header">';
             html += '<h3 class="module-title">';
             html += '<span class="module-icon"><i class="fa fa-puzzle-piece"></i></span>';
-            html += module.name;
+            html += (module.name || 'Неизвестный модуль');
             html += '</h3>';
-            html += '<span class="module-version">v' + module.version + '</span>';
+            html += '<span class="module-version">v' + (module.version || '1.0') + '</span>';
             html += '</div>';
             
-            html += '<div class="module-description">' + module.description + '</div>';
+            html += '<div class="module-description">' + (module.description || 'Описание отсутствует') + '</div>';
             
             html += '<div class="module-meta">';
             
@@ -650,7 +644,7 @@ function renderModules(modules, containerId, category) {
                 html += '<i class="fa fa-check"></i> Установлен';
                 html += '</button>';
             } else {
-                html += '<button class="install-btn" data-code="' + module.code + '" data-url="' + module.download_url + '">';
+                html += '<button class="install-btn" data-code="' + (module.code || '') + '" data-url="' + (module.download_url || '') + '">';
                 html += '<i class="fa fa-download"></i> Установить';
                 html += '</button>';
             }
@@ -671,11 +665,16 @@ function renderModules(modules, containerId, category) {
         html += '</div>';
     }
     
-    $('#' + containerId).html(html);
+    $('#modules-container').html(html);
 }
 
 // Установка модуля
 function installModule(moduleCode, downloadUrl, buttonElement) {
+    if (!moduleCode || !downloadUrl) {
+        showAlert('danger', 'Недостаточно данных для установки модуля');
+        return;
+    }
+    
     var originalText = $(buttonElement).html();
     
     $.ajax({
@@ -708,33 +707,21 @@ function installModule(moduleCode, downloadUrl, buttonElement) {
 
 // Обработчики событий
 $(document).ready(function() {
-    // Загружаем рекомендуемые модули при загрузке страницы
-    loadModules('featured', 'featured-modules-content');
-    
-    // Загрузка модулей при переключении вкладок
-    $('a[data-toggle="tab"]').on('shown.bs.tab', function (e) {
-        var target = $(e.target).attr("href");
-        
-        if (target === '#popular' && $('#popular-modules-content .modules-grid').length === 0) {
-            loadModules('popular', 'popular-modules-content');
-        } else if (target === '#newest' && $('#newest-modules-content .modules-grid').length === 0) {
-            loadModules('newest', 'newest-modules-content');
-        }
-    });
+    // Автоматически загружаем модули для текущей страницы (кроме поиска)
+    if (currentPage && currentPage !== 'search') {
+        loadModules();
+    }
     
     // Кнопка обновления списка
     $('#button-refresh').on('click', function() {
-        var activeTab = $('.nav-tabs .active a').attr('href');
         var button = $(this);
-        
         button.button('loading');
         
-        if (activeTab === '#featured') {
-            loadModules('featured', 'featured-modules-content');
-        } else if (activeTab === '#popular') {
-            loadModules('popular', 'popular-modules-content');
-        } else if (activeTab === '#newest') {
-            loadModules('newest', 'newest-modules-content');
+        if (currentPage === 'search') {
+            // Для поиска повторяем последний поиск
+            searchModules();
+        } else {
+            loadModules();
         }
         
         setTimeout(function() {

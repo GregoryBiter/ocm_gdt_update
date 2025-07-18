@@ -692,4 +692,91 @@ class Manager {
         }
         return true;
     }
+    
+    /**
+     * Получение модулей из внешнего API сервера
+     * 
+     * @param string $server_url URL сервера модулей
+     * @param array $params Параметры запроса
+     * @param string $api_key Ключ API для аутентификации
+     * @return array
+     */
+    public function getModulesFromServer($server_url, $params = array(), $api_key = '') {
+        $url = rtrim($server_url, '/') . '/index.php?route=gdt_update_server/modules';
+        
+        // Добавляем параметры к URL
+        if (!empty($params)) {
+            $url .= '&' . http_build_query($params);
+        }
+        
+        // Получаем API ключ из настроек, если не передан
+        if (empty($api_key)) {
+            $api_key = $this->registry->get('config')->get('module_gdt_updater_api_key');
+        }
+        
+        // Данные для POST запроса
+        $post_data = array();
+        if (!empty($api_key)) {
+            $post_data['api_key'] = $api_key;
+        }
+        
+        // Инициализация cURL сессии
+        $curl = curl_init();
+        
+        // Настройка параметров cURL
+        curl_setopt_array($curl, array(
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => !empty($post_data),
+            CURLOPT_POSTFIELDS => !empty($post_data) ? http_build_query($post_data) : '',
+            CURLOPT_HTTPHEADER => array(
+                'Content-Type: application/x-www-form-urlencoded',
+                'User-Agent: GDT-ModuleManager/1.0',
+                'Accept: application/json'
+            ),
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_FAILONERROR => false
+        ));
+        
+        // Выполнение запроса
+        $response = curl_exec($curl);
+        $error = curl_error($curl);
+        $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        
+        // Закрытие cURL сессии
+        curl_close($curl);
+        
+        if ($error) {
+            if ($this->log) {
+                $this->log->write('GDT Module Manager API error: ' . $error);
+            }
+            throw new \Exception('Ошибка соединения с сервером модулей: ' . $error);
+        }
+        
+        if ($http_code != 200) {
+            if ($this->log) {
+                $this->log->write('GDT Module Manager HTTP error: ' . $http_code);
+            }
+            throw new \Exception('HTTP ошибка: ' . $http_code);
+        }
+        
+        if (empty($response)) {
+            throw new \Exception('Пустой ответ от сервера модулей');
+        }
+        
+        $decoded = json_decode($response, true);
+        if ($decoded === null) {
+            throw new \Exception('Некорректный JSON ответ от сервера модулей');
+        }
+        
+        if (isset($decoded['success']) && $decoded['success']) {
+            return $decoded['modules'];
+        } else {
+            $error_msg = isset($decoded['error']) ? $decoded['error'] : 'Неизвестная ошибка API';
+            throw new \Exception('Ошибка API сервера модулей: ' . $error_msg);
+        }
+    }
 }

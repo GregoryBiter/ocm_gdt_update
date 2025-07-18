@@ -8,6 +8,7 @@
         "admin/language/ru-ru/extension/module/gdt_updater.php",
         "admin/language/uk-ua/extension/module/gdt_install_modules.php",
         "admin/language/uk-ua/extension/module/gdt_updater.php",
+        "admin/model/extension/module/gdt_update_server.php",
         "admin/view/template/extension/module/gdt_install_modules.twig",
         "admin/view/template/extension/module/gdt_updater.twig",
         "system/library/gbitstudio/modules/manager.php",

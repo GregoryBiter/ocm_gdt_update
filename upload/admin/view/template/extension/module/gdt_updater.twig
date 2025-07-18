@@ -931,6 +931,15 @@ $(document).ready(function() {
         var url = $(element).data('url');
         var originalText = $(element).html();
         
+        // Отладочный вывод
+        console.log('Update URL:', url);
+        console.log('Element:', element);
+        
+        if (!url) {
+            showAlert('danger', 'URL для обновления не найден');
+            return;
+        }
+        
         $.ajax({
             url: url,
             dataType: 'json',
