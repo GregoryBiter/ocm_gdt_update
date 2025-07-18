@@ -91,11 +91,11 @@ class ControllerExtensionModuleGdtUpdater extends Controller {
         
         foreach ($installed_modules as $module) {
             $module_data = array(
-                'name' => $module['name'],
-                'description' => $module['description'] ?? 'Описание отсутствует',
+                'name' => $module['module_name'] ?? $module['name'],
+                'description' => $module['description'] ?? ' - ',
                 'code' => $module['code'],
                 'version' => $module['version'],
-                'author' => $module['author'] ?? '',
+                'author' => $module['creator_name'] ?? '',
                 'author_url' => $module['author_url'] ?? '',
                 'has_update' => false,
                 'new_version' => '',
