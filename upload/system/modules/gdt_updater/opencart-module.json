@@ -7,29 +7,26 @@
     "description": "OpenCart module update system with server and client components",
     "provider": "provider/module/gdt_updater/boot",
     "controller": "admin/controller/extension/module/gdt_updater.php",
-    "dependencies": [
-        {
-            "module_code": "dependency_module_1",
-            "version": ">=1.2.0"
-        },
-        {
-            "module_code": "dependency_module_2",
-            "version": "2.0.0"
-        }
-    ],
     "files": [
+        "admin/controller/extension/dashboard/gdt_updater.php",
         "admin/controller/extension/module/gdt_install_modules.php",
         "admin/controller/extension/module/gdt_updater.php",
+        "admin/language/en-gb/extension/dashboard/gdt_updater.php",
         "admin/language/en-gb/extension/module/gdt_install_modules.php",
         "admin/language/en-gb/extension/module/gdt_updater.php",
+        "admin/language/ru-ru/extension/dashboard/gdt_updater.php",
         "admin/language/ru-ru/extension/module/gdt_install_modules.php",
         "admin/language/ru-ru/extension/module/gdt_updater.php",
+        "admin/language/uk-ua/extension/dashboard/gdt_updater.php",
         "admin/language/uk-ua/extension/module/gdt_install_modules.php",
         "admin/language/uk-ua/extension/module/gdt_updater.php",
-        "admin/model/extension/module/gdt_update_server.php",
+        "admin/view/template/extension/dashboard/gdt_updater.twig",
+        "admin/view/template/extension/dashboard/gdt_updater_form.twig",
+        "admin/view/template/extension/dashboard/gdt_updater_info.twig",
         "admin/view/template/extension/module/gdt_install_modules.twig",
         "admin/view/template/extension/module/gdt_updater.twig",
-        "system/library/gbitstudio/updater/service/updater.php",
-        "system/library/gbitstudio/updater/tools.php"
+        "system/library/gbitstudio/modules/manager.php",
+        "system/library/gbitstudio/modules/tools.php",
+        "system/modules/test_module/opencart-module.json"
     ]
 }
