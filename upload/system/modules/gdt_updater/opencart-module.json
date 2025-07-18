@@ -28,14 +28,9 @@
         "catalog/controller/gdt_update_server/check.php",
         "catalog/controller/gdt_update_server/download.php",
         "catalog/controller/gdt_update_server/modules.php",
-        "catalog/controller/gdt_update_server/sync.php",
         "catalog/model/extension/module/gdt_update_server.php",
+        "system/hook/gdt_updater.php",
         "system/library/gbitstudio/updater/service/updater.php",
-        "system/library/gbitstudio/updater/tools.php",
-        "system/modules/gdt_updater/opencart-module.json",
-        "system/modules/test_module/opencart-module.json"
-    ],
-    "delete": [
-        "system/modules/test_module/opencart-module.json"
+        "system/library/gbitstudio/updater/tools.php"
     ]
 }

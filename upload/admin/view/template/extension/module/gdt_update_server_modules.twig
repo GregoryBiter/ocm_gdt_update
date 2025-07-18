@@ -34,6 +34,22 @@
       </div>
       <div class="panel-body">
         
+        <!-- Панель синхронизации модулей -->
+        <div class="well">
+          <h4><i class="fa fa-refresh"></i> Синхронизация модулей</h4>
+          <p>Сканирование и синхронизация модулей из файловой системы (system/modules/*/opencart-module.json)</p>
+          <div class="form-group">
+            <button type="button" id="button-scan" class="btn btn-info"><i class="fa fa-search"></i> Сканировать модули</button>
+            <button type="button" id="button-sync" class="btn btn-success"><i class="fa fa-refresh"></i> Синхронизировать все</button>
+          </div>
+          <div id="sync-results" style="display: none;">
+            <div class="alert alert-info">
+              <h5>Найденные модули в файловой системе:</h5>
+              <div id="scanned-modules"></div>
+            </div>
+          </div>
+        </div>
+        
         <!-- Форма загрузки модуля -->
         <div id="upload-form" class="well" style="display: none;">
           <h4>{{ text_upload_module }}</h4>
@@ -257,6 +273,88 @@ function deleteModule(code) {
         });
     }
 }
+
+// Сканирование модулей в файловой системе
+$('#button-scan').click(function() {
+    var button = $(this);
+    button.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Сканирование...');
+    
+    $.ajax({
+        url: 'index.php?route=extension/module/gdt_update_server/scan&user_token={{ user_token }}',
+        type: 'POST',
+        dataType: 'json',
+        success: function(json) {
+            button.prop('disabled', false).html('<i class="fa fa-search"></i> Сканировать модули');
+            
+            if (json.error) {
+                $('#content').prepend('<div class="alert alert-danger alert-dismissible"><i class="fa fa-exclamation-circle"></i> ' + json.error + ' <button type="button" class="close" data-dismiss="alert">&times;</button></div>');
+            }
+            
+            if (json.success && json.modules) {
+                var html = '<div class="table-responsive"><table class="table table-striped">';
+                html += '<thead><tr><th>Код</th><th>Название</th><th>Версия</th><th>Автор</th><th>Путь</th></tr></thead><tbody>';
+                
+                if (json.modules.length > 0) {
+                    $.each(json.modules, function(index, module) {
+                        html += '<tr>';
+                        html += '<td>' + module.code + '</td>';
+                        html += '<td>' + module.name + '</td>';
+                        html += '<td>' + module.version + '</td>';
+                        html += '<td>' + module.author + '</td>';
+                        html += '<td><small>' + module.path + '</small></td>';
+                        html += '</tr>';
+                    });
+                } else {
+                    html += '<tr><td colspan="5" class="text-center">Модули с файлами opencart-module.json не найдены</td></tr>';
+                }
+                
+                html += '</tbody></table></div>';
+                $('#scanned-modules').html(html);
+                $('#sync-results').show();
+            }
+        },
+        error: function() {
+            button.prop('disabled', false).html('<i class="fa fa-search"></i> Сканировать модули');
+            $('#content').prepend('<div class="alert alert-danger alert-dismissible"><i class="fa fa-exclamation-circle"></i> Ошибка при сканировании <button type="button" class="close" data-dismiss="alert">&times;</button></div>');
+        }
+    });
+});
+
+// Синхронизация всех модулей
+$('#button-sync').click(function() {
+    if (!confirm('Синхронизировать все модули из файловой системы с базой данных?')) {
+        return;
+    }
+    
+    var button = $(this);
+    button.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Синхронизация...');
+    
+    $.ajax({
+        url: 'index.php?route=extension/module/gdt_update_server/sync&user_token={{ user_token }}',
+        type: 'POST',
+        dataType: 'json',
+        success: function(json) {
+            button.prop('disabled', false).html('<i class="fa fa-refresh"></i> Синхронизировать все');
+            
+            if (json.error) {
+                $('#content').prepend('<div class="alert alert-danger alert-dismissible"><i class="fa fa-exclamation-circle"></i> ' + json.error + ' <button type="button" class="close" data-dismiss="alert">&times;</button></div>');
+            }
+            
+            if (json.success) {
+                $('#content').prepend('<div class="alert alert-success alert-dismissible"><i class="fa fa-check-circle"></i> ' + json.success + ' (синхронизировано: ' + json.synced_modules + ' модулей) <button type="button" class="close" data-dismiss="alert">&times;</button></div>');
+                
+                // Перезагружаем страницу для обновления списка модулей
+                setTimeout(function() {
+                    location.reload();
+                }, 2000);
+            }
+        },
+        error: function() {
+            button.prop('disabled', false).html('<i class="fa fa-refresh"></i> Синхронизировать все');
+            $('#content').prepend('<div class="alert alert-danger alert-dismissible"><i class="fa fa-exclamation-circle"></i> Ошибка при синхронизации <button type="button" class="close" data-dismiss="alert">&times;</button></div>');
+        }
+    });
+});
 
 // Инициализация подсказок
 $('[data-toggle="tooltip"]').tooltip();

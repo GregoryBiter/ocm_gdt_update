@@ -1,0 +1,13 @@
+{
+    "module_name": "test_module",
+    "creator_name": "gregorybiter",
+    "creator_email": "gregorybiter@gmail.com",
+    "code": "test_module",
+    "version": "1.0.1",
+    "description": "A test module for OpenCart",
+    "controller": "admin/controller/extension/module/test_module.php",
+    "files": [
+        "admin/controller/extension/module/test_module.php",
+        "system/hook/test_module.php"
+    ]
+}

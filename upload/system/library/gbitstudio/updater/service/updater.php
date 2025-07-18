@@ -34,33 +34,38 @@ class Updater {
             return $modules;
         }
         
-        // Ищем файлы в директории system/hook
-        $hook_files = glob(DIR_SYSTEM . 'hook/*.php');
+        // Ищем файлы opencart-module.json в директории system/modules/*/
+        $modules_dirs = glob(DIR_SYSTEM . 'modules/*', GLOB_ONLYDIR);
         
-        if ($hook_files) {
-            foreach ($hook_files as $file) {
-                $content = file_get_contents($file);
+        if ($modules_dirs) {
+            foreach ($modules_dirs as $module_dir) {
+                $module_config_file = $module_dir . '/opencart-module.json';
                 
-                // Получаем код модуля из имени файла (без расширения .php)
-                $filename = basename($file, '.php');
-                
-                // Извлекаем информацию о модуле из комментариев
-                preg_match('/name:\s*([^\n]+)/i', $content, $name_match);
-                preg_match('/description:\s*([^\n]+)/i', $content, $description_match);
-                preg_match('/version:\s*([^\n]+)/i', $content, $version_match);
-                preg_match('/author:\s*([^\n]+)/i', $content, $author_match);
-                preg_match('/author_url:\s*([^\n]+)/i', $content, $author_url_match);
-                
-                if (isset($name_match[1]) && isset($version_match[1])) {
-                    $modules[] = array(
-                        'name' => trim($name_match[1]),
-                        'description' => isset($description_match[1]) ? trim($description_match[1]) : '',
-                        'code' => $filename, // Используем имя файла как код модуля
-                        'version' => trim($version_match[1]),
-                        'author' => isset($author_match[1]) ? trim($author_match[1]) : '',
-                        'author_url' => isset($author_url_match[1]) ? trim($author_url_match[1]) : '',
-                        'file_path' => $file
-                    );
+                // Проверяем, существует ли файл конфигурации модуля
+                if (file_exists($module_config_file)) {
+                    $config_content = file_get_contents($module_config_file);
+                    $module_config = json_decode($config_content, true);
+                    
+                    // Проверяем, что JSON корректный и содержит необходимые поля
+                    if ($module_config && isset($module_config['module_name']) && isset($module_config['version'])) {
+                        $modules[] = array(
+                            'name' => $module_config['module_name'],
+                            'description' => isset($module_config['description']) ? $module_config['description'] : '',
+                            'code' => isset($module_config['code']) ? $module_config['code'] : basename($module_dir),
+                            'version' => $module_config['version'],
+                            'author' => isset($module_config['creator_name']) ? $module_config['creator_name'] : '',
+                            'author_email' => isset($module_config['creator_email']) ? $module_config['creator_email'] : '',
+                            'controller' => isset($module_config['controller']) ? $module_config['controller'] : '',
+                            'files' => isset($module_config['files']) ? $module_config['files'] : array(),
+                            'config_path' => $module_config_file,
+                            'module_dir' => $module_dir
+                        );
+                    } else {
+                        // Логируем ошибку если JSON некорректный
+                        if ($this->log) {
+                            $this->log->write('GDT Updater warning: Invalid module config in ' . $module_config_file);
+                        }
+                    }
                 }
             }
         }
@@ -316,17 +321,19 @@ class Updater {
             
             $this->copyDirectory($source_dir, $opencart_dir);
             
-            // Обновляем версию в файле хука
-            $hook_content = file_get_contents($module['file_path']);
-            
-            // Проверяем, не соответствует ли текущая версия новой версии
-            preg_match('/version:\s*([^\n]+)/i', $hook_content, $current_version_match);
-            $current_version = isset($current_version_match[1]) ? trim($current_version_match[1]) : '';
-            
-            // Обновляем только если версии отличаются
-            if ($current_version !== $update_info['version']) {
-                $new_hook_content = preg_replace('/version:\s*([^\n]+)/i', 'version: ' . $update_info['version'], $hook_content);
-                file_put_contents($module['file_path'], $new_hook_content);
+            // Обновляем версию в файле конфигурации модуля
+            if (isset($module['config_path']) && file_exists($module['config_path'])) {
+                $config_content = file_get_contents($module['config_path']);
+                $config_data = json_decode($config_content, true);
+                
+                if ($config_data && isset($config_data['version'])) {
+                    // Обновляем только если версии отличаются
+                    if ($config_data['version'] !== $update_info['version']) {
+                        $config_data['version'] = $update_info['version'];
+                        $new_config_content = json_encode($config_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+                        file_put_contents($module['config_path'], $new_config_content);
+                    }
+                }
             }
             
             // Очищаем временные файлы
@@ -408,5 +415,46 @@ class Updater {
             
             rmdir($directory);
         }
+    }
+    
+    /**
+     * Создает модуль в новой структуре (для тестирования и миграции)
+     * 
+     * @param array $module_data Данные модуля
+     * @return bool
+     */
+    public function createModuleStructure($module_data) {
+        if (!defined('DIR_SYSTEM')) {
+            if ($this->log) {
+                $this->log->write('GDT Updater error: DIR_SYSTEM constant is not defined');
+            }
+            return false;
+        }
+        
+        $modules_dir = rtrim(DIR_SYSTEM, '/') . '/modules';
+        $module_dir = $modules_dir . '/' . $module_data['code'];
+        
+        // Создаем директорию модулей, если не существует
+        if (!is_dir($modules_dir)) {
+            mkdir($modules_dir, 0755, true);
+        }
+        
+        // Создаем директорию конкретного модуля
+        if (!is_dir($module_dir)) {
+            mkdir($module_dir, 0755, true);
+        }
+        
+        // Создаем файл конфигурации opencart-module.json
+        $config_file = $module_dir . '/opencart-module.json';
+        $config_content = json_encode($module_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        
+        if (file_put_contents($config_file, $config_content)) {
+            if ($this->log) {
+                $this->log->write('GDT Updater: Module structure created for ' . $module_data['code']);
+            }
+            return true;
+        }
+        
+        return false;
     }
 }

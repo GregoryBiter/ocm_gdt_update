@@ -1,0 +1,19 @@
+{
+    "module_name": "Example Module",
+    "creator_name": "John Doe",
+    "creator_email": "john@example.com",
+    "code": "example_module",
+    "version": "1.2.0",
+    "description": "Example module for demonstration of new installation system",
+    "controller": "admin/controller/extension/module/example_module.php",
+    "files": [
+        "admin/controller/extension/module/example_module.php",
+        "admin/language/en-gb/extension/module/example_module.php",
+        "admin/language/ru-ru/extension/module/example_module.php",
+        "admin/view/template/extension/module/example_module.twig",
+        "system/hook/example_module.php"
+    ],
+    "opencart_version": "3.0+",
+    "dependencies": [],
+    "category": "module"
+}

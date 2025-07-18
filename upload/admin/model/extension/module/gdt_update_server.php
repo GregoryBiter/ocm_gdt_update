@@ -478,7 +478,7 @@ class ModelExtensionModuleGdtUpdateServer extends Model {
             }
             
             // Получаем информацию о модуле
-            $module_info = $this->getModule($module_code);
+            $module_info = $this->getModuleByCode($module_code);
             if (!$module_info) {
                 return array(
                     'success' => false,
@@ -521,23 +521,6 @@ class ModelExtensionModuleGdtUpdateServer extends Model {
                 'error' => 'Ошибка установки: ' . $e->getMessage()
             );
         }
-    }
-    
-    /**
-     * Получение информации о модуле
-     */
-    public function getModule($code) {
-        $query = $this->db->query("SELECT * FROM " . DB_PREFIX . "gdt_server_modules WHERE code = '" . $this->db->escape($code) . "' AND status = 1");
-        
-        if ($query->num_rows) {
-            $module = $query->row;
-            if ($module['dependencies']) {
-                $module['dependencies'] = json_decode($module['dependencies'], true);
-            }
-            return $module;
-        }
-        
-        return false;
     }
     
     /**
@@ -636,7 +619,32 @@ class ModelExtensionModuleGdtUpdateServer extends Model {
         }
         
         try {
+            // Копируем основные файлы модуля
             $this->copyDirectory($upload_dir, $opencart_root);
+            
+            // Проверяем наличие opencart-module.json в корне архива
+            $module_config_source = $source_dir . '/opencart-module.json';
+            if (file_exists($module_config_source)) {
+                // Создаем директорию для модуля в system/modules
+                $module_dir = $opencart_root . 'system/modules/' . $module_code;
+                if (!is_dir($module_dir)) {
+                    mkdir($module_dir, 0755, true);
+                }
+                
+                // Копируем файл конфигурации
+                $module_config_dest = $module_dir . '/opencart-module.json';
+                if (copy($module_config_source, $module_config_dest)) {
+                    // Логируем успешное копирование конфигурации
+                    error_log('GDT Module Installer: Configuration file copied for module ' . $module_code);
+                } else {
+                    // Логируем ошибку копирования конфигурации
+                    error_log('GDT Module Installer: Failed to copy configuration file for module ' . $module_code);
+                }
+            } else {
+                // Логируем отсутствие файла конфигурации
+                error_log('GDT Module Installer: No opencart-module.json found for module ' . $module_code);
+            }
+            
             return array(
                 'success' => true,
                 'message' => 'Файлы модуля успешно скопированы'
@@ -723,5 +731,143 @@ class ModelExtensionModuleGdtUpdateServer extends Model {
         } else {
             return $bytes . ' bytes';
         }
+    }
+    
+    /**
+     * Получение списка установленных модулей из system/modules
+     */
+    private function getInstalledModules() {
+        $modules = array();
+        
+        $system_modules_dir = DIR_APPLICATION . '../system/modules';
+        
+        if (!is_dir($system_modules_dir)) {
+            return $modules;
+        }
+        
+        // Сканируем директории модулей
+        $module_dirs = scandir($system_modules_dir);
+        
+        foreach ($module_dirs as $module_dir) {
+            if ($module_dir === '.' || $module_dir === '..') {
+                continue;
+            }
+            
+            $module_path = $system_modules_dir . '/' . $module_dir;
+            if (!is_dir($module_path)) {
+                continue;
+            }
+            
+            $config_file = $module_path . '/opencart-module.json';
+            if (file_exists($config_file)) {
+                $config_content = file_get_contents($config_file);
+                $module_config = json_decode($config_content, true);
+                
+                if ($module_config && isset($module_config['code'])) {
+                    $modules[] = array(
+                        'code' => $module_config['code'],
+                        'name' => isset($module_config['module_name']) ? $module_config['module_name'] : $module_dir,
+                        'version' => isset($module_config['version']) ? $module_config['version'] : '1.0.0',
+                        'author' => isset($module_config['creator_name']) ? $module_config['creator_name'] : '',
+                        'description' => isset($module_config['description']) ? $module_config['description'] : '',
+                        'config_path' => $config_file
+                    );
+                }
+            }
+        }
+        
+        return $modules;
+    }
+    
+    /**
+     * Импорт модуля из файла opencart-module.json в базу данных
+     */
+    public function importModuleFromConfig($module_path, $zip_file_path = '') {
+        $config_file = $module_path . '/opencart-module.json';
+        
+        if (!file_exists($config_file)) {
+            return false;
+        }
+        
+        $config_content = file_get_contents($config_file);
+        $module_config = json_decode($config_content, true);
+        
+        if (!$module_config || !isset($module_config['code'])) {
+            return false;
+        }
+        
+        // Проверяем, существует ли уже модуль в базе
+        $existing_module = $this->getModuleByCode($module_config['code']);
+        
+        $module_data = array(
+            'code' => $module_config['code'],
+            'name' => isset($module_config['module_name']) ? $module_config['module_name'] : $module_config['code'],
+            'description' => isset($module_config['description']) ? $module_config['description'] : '',
+            'version' => isset($module_config['version']) ? $module_config['version'] : '1.0.0',
+            'author' => isset($module_config['creator_name']) ? $module_config['creator_name'] : '',
+            'author_url' => isset($module_config['creator_email']) ? 'mailto:' . $module_config['creator_email'] : '',
+            'category' => isset($module_config['category']) ? $module_config['category'] : 'module',
+            'opencart_version' => isset($module_config['opencart_version']) ? $module_config['opencart_version'] : '3.0+',
+            'dependencies' => isset($module_config['dependencies']) ? $module_config['dependencies'] : array(),
+            'file_path' => $zip_file_path,
+            'file_size' => !empty($zip_file_path) && file_exists($zip_file_path) ? filesize($zip_file_path) : 0,
+            'file_hash' => !empty($zip_file_path) && file_exists($zip_file_path) ? md5_file($zip_file_path) : '',
+            'status' => 1
+        );
+        
+        if ($existing_module) {
+            // Обновляем существующий модуль
+            $this->editModule($existing_module['module_id'], $module_data);
+            return $existing_module['module_id'];
+        } else {
+            // Добавляем новый модуль
+            return $this->addModule($module_data);
+        }
+    }
+    
+    /**
+     * Синхронизация модулей из system/modules с базой данных
+     */
+    public function syncModulesFromFileSystem() {
+        $system_modules_dir = DIR_APPLICATION . '../system/modules';
+        $synced_count = 0;
+        
+        if (!is_dir($system_modules_dir)) {
+            return $synced_count;
+        }
+        
+        $module_dirs = scandir($system_modules_dir);
+        
+        foreach ($module_dirs as $module_dir) {
+            if ($module_dir === '.' || $module_dir === '..') {
+                continue;
+            }
+            
+            $module_path = $system_modules_dir . '/' . $module_dir;
+            if (!is_dir($module_path)) {
+                continue;
+            }
+            
+            $config_file = $module_path . '/opencart-module.json';
+            if (file_exists($config_file)) {
+                // Ищем соответствующий ZIP файл
+                $zip_file = '';
+                $storage_path = defined('DIR_STORAGE') ? DIR_STORAGE : DIR_SYSTEM . 'storage/';
+                $server_modules_path = $storage_path . 'gdt_update_server/modules/';
+                
+                if (is_dir($server_modules_path)) {
+                    $zip_files = glob($server_modules_path . $module_dir . '*.zip');
+                    if (!empty($zip_files)) {
+                        $zip_file = $zip_files[0]; // Берем первый найденный файл
+                    }
+                }
+                
+                if ($this->importModuleFromConfig($module_path, $zip_file)) {
+                    $synced_count++;
+                }
+            }
+        }
+        
+        return $synced_count;
     }
 }

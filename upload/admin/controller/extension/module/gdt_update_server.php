@@ -1,6 +1,35 @@
 <?php
+use GbitStudio\Updater\Tools;
 class ControllerExtensionModuleGdtUpdateServer extends Controller {
     private $error = array();
+    private $t;
+
+    public function __construct(\Registry $registry){
+        parent::__construct($registry);
+        $this->t = new Tools($registry);
+    }
+
+    private function getBreadCrumbs(){
+        $breadcrumbs = array();
+
+        $breadcrumbs[] = array(
+            'text' => $this->language->get('text_home'),
+            'href' => $this->url->link('common/dashboard', 'user_token=' . $this->session->data['user_token'], true)
+        );
+        
+        $breadcrumbs[] = array(
+            'text' => $this->language->get('text_extension'),
+            'href' => $this->url->link('marketplace/extension', 'user_token=' . $this->session->data['user_token'] . '&type=module', true)
+        );
+        
+       $breadcrumbs[] = array(
+            'text' => $this->language->get('heading_title'),
+            'href' => $this->url->link('extension/module/gdt_update_server', 'user_token=' . $this->session->data['user_token'], true)
+        );
+
+        return $breadcrumbs;
+
+    }
     
     public function index() {
         $this->load->language('extension/module/gdt_update_server');
@@ -17,62 +46,31 @@ class ControllerExtensionModuleGdtUpdateServer extends Controller {
             
             $this->response->redirect($this->url->link('marketplace/extension', 'user_token=' . $this->session->data['user_token'] . '&type=module', true));
         }
+
+        $data['error_warning'] = $this->error['warning'] ?? '';
+
+        $data['error_api_key'] = $this->error['api_key'] ?? '';
         
-        if (isset($this->error['warning'])) {
-            $data['error_warning'] = $this->error['warning'];
-        } else {
-            $data['error_warning'] = '';
-        }
-        
-        if (isset($this->error['api_key'])) {
-            $data['error_api_key'] = $this->error['api_key'];
-        } else {
-            $data['error_api_key'] = '';
-        }
-        
-        $data['breadcrumbs'] = array();
-        
-        $data['breadcrumbs'][] = array(
-            'text' => $this->language->get('text_home'),
-            'href' => $this->url->link('common/dashboard', 'user_token=' . $this->session->data['user_token'], true)
-        );
-        
-        $data['breadcrumbs'][] = array(
-            'text' => $this->language->get('text_extension'),
-            'href' => $this->url->link('marketplace/extension', 'user_token=' . $this->session->data['user_token'] . '&type=module', true)
-        );
-        
-        $data['breadcrumbs'][] = array(
-            'text' => $this->language->get('heading_title'),
-            'href' => $this->url->link('extension/module/gdt_update_server', 'user_token=' . $this->session->data['user_token'], true)
-        );
+        $data['breadcrumbs'] = $this->getBreadCrumbs();
         
         $data['action'] = $this->url->link('extension/module/gdt_update_server', 'user_token=' . $this->session->data['user_token'], true);
         $data['cancel'] = $this->url->link('marketplace/extension', 'user_token=' . $this->session->data['user_token'] . '&type=module', true);
         
         // Настройки модуля
-        if (isset($this->request->post['module_gdt_update_server_status'])) {
-            $data['module_gdt_update_server_status'] = $this->request->post['module_gdt_update_server_status'];
-        } else {
-            $data['module_gdt_update_server_status'] = $this->config->get('module_gdt_update_server_status');
-        }
-        
-        if (isset($this->request->post['module_gdt_update_server_api_key'])) {
-            $data['module_gdt_update_server_api_key'] = $this->request->post['module_gdt_update_server_api_key'];
-        } else {
-            $data['module_gdt_update_server_api_key'] = $this->config->get('module_gdt_update_server_api_key');
-        }
-        
-        if (isset($this->request->post['module_gdt_update_server_allowed_ips'])) {
-            $data['module_gdt_update_server_allowed_ips'] = $this->request->post['module_gdt_update_server_allowed_ips'];
-        } else {
-            $data['module_gdt_update_server_allowed_ips'] = $this->config->get('module_gdt_update_server_allowed_ips');
-        }
-        
-        if (isset($this->request->post['module_gdt_update_server_log_enabled'])) {
-            $data['module_gdt_update_server_log_enabled'] = $this->request->post['module_gdt_update_server_log_enabled'];
-        } else {
-            $data['module_gdt_update_server_log_enabled'] = $this->config->get('module_gdt_update_server_log_enabled');
+
+        $settings = [
+            "module_gdt_update_server_status",
+            "module_gdt_update_server_api_key",
+            "module_gdt_update_server_allowed_ips",
+            "module_gdt_update_server_log_enabled"
+        ];
+
+        foreach ($settings as $setting) {
+            if (isset($this->request->post[$setting])) {
+                $data[$setting] = $this->request->post[$setting];
+            } else {
+                $data[$setting] = $this->config->get($setting);
+            }
         }
         
         // URLs для API
@@ -83,11 +81,9 @@ class ControllerExtensionModuleGdtUpdateServer extends Controller {
         // Переменные для шаблона
         $data['user_token'] = $this->session->data['user_token'];
         
-        $data['header'] = $this->load->controller('common/header');
-        $data['column_left'] = $this->load->controller('common/column_left');
-        $data['footer'] = $this->load->controller('common/footer');
+        $this->t->getLayout($data);
         
-        $this->response->setOutput($this->load->view('extension/module/gdt_update_server', $data));
+        $this->t->view('extension/module/gdt_update_server', $data);
     }
     
     /**
@@ -102,27 +98,7 @@ class ControllerExtensionModuleGdtUpdateServer extends Controller {
         // Получаем список модулей из базы данных
         $data['modules'] = $this->model_extension_module_gdt_update_server->getModules();
         
-        $data['breadcrumbs'] = array();
-        
-        $data['breadcrumbs'][] = array(
-            'text' => $this->language->get('text_home'),
-            'href' => $this->url->link('common/dashboard', 'user_token=' . $this->session->data['user_token'], true)
-        );
-        
-        $data['breadcrumbs'][] = array(
-            'text' => $this->language->get('text_extension'),
-            'href' => $this->url->link('marketplace/extension', 'user_token=' . $this->session->data['user_token'] . '&type=module', true)
-        );
-        
-        $data['breadcrumbs'][] = array(
-            'text' => $this->language->get('heading_title'),
-            'href' => $this->url->link('extension/module/gdt_update_server', 'user_token=' . $this->session->data['user_token'], true)
-        );
-        
-        $data['breadcrumbs'][] = array(
-            'text' => $this->language->get('heading_title_modules'),
-            'href' => $this->url->link('extension/module/gdt_update_server/modules', 'user_token=' . $this->session->data['user_token'], true)
-        );
+        $data['breadcrumbs'] = $this->getBreadCrumbs();
         
         $data['cancel'] = $this->url->link('extension/module/gdt_update_server', 'user_token=' . $this->session->data['user_token'], true);
         $data['upload_url'] = $this->url->link('extension/module/gdt_update_server/upload', 'user_token=' . $this->session->data['user_token'], true);
@@ -221,10 +197,63 @@ class ControllerExtensionModuleGdtUpdateServer extends Controller {
         $zip = new ZipArchive();
         
         if ($zip->open($archive_path) === true) {
+            // Сначала ищем opencart-module.json в корне архива
+            $config_content = $zip->getFromName('opencart-module.json');
+            
+            if ($config_content === false) {
+                // Если не найден в корне, ищем в system/modules/*/opencart-module.json
+                for ($i = 0; $i < $zip->numFiles; $i++) {
+                    $filename = $zip->getNameIndex($i);
+                    
+                    // Проверяем паттерн system/modules/*/opencart-module.json
+                    if (preg_match('/^(upload\/)?system\/modules\/([^\/]+)\/opencart-module\.json$/', $filename, $matches)) {
+                        $config_content = $zip->getFromIndex($i);
+                        break;
+                    }
+                }
+            }
+            
+            $zip->close();
+            
+            // Если найден файл конфигурации, парсим его
+            if ($config_content !== false) {
+                $module_config = json_decode($config_content, true);
+                
+                if ($module_config && isset($module_config['code']) && isset($module_config['version'])) {
+                    return array(
+                        'code' => $module_config['code'],
+                        'name' => isset($module_config['module_name']) ? $module_config['module_name'] : $module_config['code'],
+                        'description' => isset($module_config['description']) ? $module_config['description'] : '',
+                        'version' => $module_config['version'],
+                        'author' => isset($module_config['creator_name']) ? $module_config['creator_name'] : '',
+                        'author_url' => isset($module_config['creator_email']) ? 'mailto:' . $module_config['creator_email'] : '',
+                        'category' => isset($module_config['category']) ? $module_config['category'] : 'module',
+                        'opencart_version' => isset($module_config['opencart_version']) ? $module_config['opencart_version'] : '3.0+',
+                        'dependencies' => isset($module_config['dependencies']) ? $module_config['dependencies'] : array(),
+                        'upload_date' => date('Y-m-d H:i:s'),
+                        'archive_structure' => 'opencart'
+                    );
+                }
+            }
+            
+            // Fallback: ищем информацию в старом формате (комментарии в hook-файлах)
+            return $this->extractModuleInfoLegacy($archive_path);
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Извлечь информацию о модуле из архива (старый формат с комментариями)
+     */
+    private function extractModuleInfoLegacy($archive_path) {
+        $zip = new ZipArchive();
+        
+        if ($zip->open($archive_path) === true) {
             // Ищем файл с информацией о модуле в разных возможных местах
             $possible_paths = array(
-                'system/hook/',           // Прямо в корне архива
-                'upload/system/hook/'     // В структуре OpenCart с папкой upload
+                'system/hook/',               // Прямо в корне архива
+                'upload/system/hook/'         // В структуре OpenCart с папкой upload
             );
             
             for ($i = 0; $i < $zip->numFiles; $i++) {
@@ -255,6 +284,9 @@ class ControllerExtensionModuleGdtUpdateServer extends Controller {
                                 'version' => trim($version_match[1]),
                                 'author' => isset($author_match[1]) ? trim($author_match[1]) : '',
                                 'author_url' => isset($author_url_match[1]) ? trim($author_url_match[1]) : '',
+                                'category' => 'module',
+                                'opencart_version' => '3.0+',
+                                'dependencies' => array(),
                                 'upload_date' => date('Y-m-d H:i:s'),
                                 'archive_structure' => strpos($filename, 'upload/') === 0 ? 'opencart' : 'direct'
                             );
@@ -344,6 +376,86 @@ class ControllerExtensionModuleGdtUpdateServer extends Controller {
             }
         } else {
             $json['error'] = $this->language->get('error_module_code');
+        }
+        
+        $this->response->addHeader('Content-Type: application/json');
+        $this->response->setOutput(json_encode($json));
+    }
+    
+    /**
+     * Синхронизация модулей из файловой системы
+     */
+    public function sync() {
+        $this->load->language('extension/module/gdt_update_server');
+        $this->load->model('extension/module/gdt_update_server');
+        
+        $json = array();
+        
+        if (!$this->user->hasPermission('modify', 'extension/module/gdt_update_server')) {
+            $json['error'] = $this->language->get('error_permission');
+        } else {
+            // Выполняем синхронизацию
+            $synced_count = $this->model_extension_module_gdt_update_server->syncModulesFromFileSystem();
+            
+            $json['success'] = $this->language->get('text_sync_success');
+            $json['synced_modules'] = $synced_count;
+        }
+        
+        $this->response->addHeader('Content-Type: application/json');
+        $this->response->setOutput(json_encode($json));
+    }
+    
+    /**
+     * Сканирование модулей в файловой системе
+     */
+    public function scan() {
+        $this->load->language('extension/module/gdt_update_server');
+        $this->load->model('extension/module/gdt_update_server');
+        
+        $json = array();
+        
+        if (!$this->user->hasPermission('modify', 'extension/module/gdt_update_server')) {
+            $json['error'] = $this->language->get('error_permission');
+        } else {
+            $opencart_root = DIR_APPLICATION . '../';
+            $system_modules_dir = $opencart_root . 'system/modules';
+            $modules = array();
+            
+            if (is_dir($system_modules_dir)) {
+                $module_dirs = scandir($system_modules_dir);
+                
+                foreach ($module_dirs as $module_dir) {
+                    if ($module_dir === '.' || $module_dir === '..') {
+                        continue;
+                    }
+                    
+                    $module_path = $system_modules_dir . '/' . $module_dir;
+                    if (!is_dir($module_path)) {
+                        continue;
+                    }
+                    
+                    $config_file = $module_path . '/opencart-module.json';
+                    if (file_exists($config_file)) {
+                        $config_content = file_get_contents($config_file);
+                        $module_config = json_decode($config_content, true);
+                        
+                        if ($module_config && isset($module_config['code'])) {
+                            $modules[] = array(
+                                'code' => $module_config['code'],
+                                'name' => isset($module_config['module_name']) ? $module_config['module_name'] : $module_dir,
+                                'version' => isset($module_config['version']) ? $module_config['version'] : '1.0.0',
+                                'author' => isset($module_config['creator_name']) ? $module_config['creator_name'] : '',
+                                'description' => isset($module_config['description']) ? $module_config['description'] : '',
+                                'path' => $module_path,
+                                'config_file' => $config_file
+                            );
+                        }
+                    }
+                }
+            }
+            
+            $json['success'] = true;
+            $json['modules'] = $modules;
         }
         
         $this->response->addHeader('Content-Type: application/json');
