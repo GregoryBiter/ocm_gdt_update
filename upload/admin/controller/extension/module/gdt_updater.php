@@ -469,6 +469,12 @@ class ControllerExtensionModuleGdtUpdater extends Controller
             'extension/module/gdt_updater/checkUpdates' // Обработчик
         );
 
+        $this->model_setting_event->addEvent(
+            'auto_update_menu', // Код события
+            'admin/view/common/column_left/before', // Триггер
+            'extension/module/gdt_updater/menuAdmin' // Обработчик
+        );
+
         // Автоматически добавляем и включаем Dashboard модуль
         $this->load->model('setting/extension');
         $this->load->model('setting/setting');
@@ -487,18 +493,19 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $this->model_setting_setting->editSetting('dashboard_gdt_updater', $dashboard_settings);
 
         // Переставляем все остальные dashboard модули с sort_order >= 1 на одну позицию вниз
-        $this->db->query("UPDATE " . DB_PREFIX . "setting 
-                         SET value = (CAST(value AS UNSIGNED) + 1) 
-                         WHERE `key` LIKE '%_sort_order' 
-                         AND `group` LIKE 'dashboard_%' 
-                         AND `group` != 'dashboard_gdt_updater' 
-                         AND CAST(value AS UNSIGNED) >= 1");
+        // $this->db->query("UPDATE " . DB_PREFIX . "setting 
+        //                  SET value = (CAST(value AS UNSIGNED) + 1) 
+        //                  WHERE `key` LIKE '%_sort_order' 
+        //                  AND `code` LIKE 'dashboard_%' 
+        //                  AND `code` != 'dashboard_gdt_updater' 
+        //                  AND CAST(value AS UNSIGNED) >= 1");
     }
 
     public function uninstall()
     {
         $this->load->model('setting/event');
         $this->model_setting_event->deleteEventByCode('auto_update_check');
+        $this->model_setting_event->deleteEventByCode('auto_update_menu');
 
         $this->load->model('setting/setting');
         $this->model_setting_setting->deleteSetting('module_gdt_updater');
@@ -511,12 +518,12 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $this->model_setting_setting->deleteSetting('dashboard_gdt_updater');
 
         // Переставляем все остальные dashboard модули с sort_order > 1 на одну позицию вверх
-        $this->db->query("UPDATE " . DB_PREFIX . "setting 
-                         SET value = (CAST(value AS UNSIGNED) - 1) 
-                         WHERE `key` LIKE '%_sort_order' 
-                         AND `group` LIKE 'dashboard_%' 
-                         AND `group` != 'dashboard_gdt_updater' 
-                         AND CAST(value AS UNSIGNED) > 1");
+        // $this->db->query("UPDATE " . DB_PREFIX . "setting 
+        //                  SET value = (CAST(value AS UNSIGNED) - 1) 
+        //                  WHERE `key` LIKE '%_sort_order' 
+        //                  AND `code` LIKE 'dashboard_%' 
+        //                  AND `code` != 'dashboard_gdt_updater' 
+        //                  AND CAST(value AS UNSIGNED) > 1");
     }
 
 
@@ -547,6 +554,46 @@ class ControllerExtensionModuleGdtUpdater extends Controller
 
         $this->session->data['success'] = 'Проверка обновлений завершена.';
 
+    }
+
+    public function menuAdmin($route, &$data, $menu_id = 0)
+    {
+        // Проверяем, что это админская панель
+        $this->load->language('extension/module/gdt_updater', 'gdt_updater');
+        $this->load->language('extension/module/gdt_install_modules', 'gdt_install_modules');
+        // Добавляем ссылку на страницу обновлений в меню
+
+        $children = array();
+        //install
+
+        $children[] = array(
+            'name' => $this->language->get('gdt_install_modules')->get('heading_title'),
+            'href' => $this->url->link('extension/module/gdt_install_modules', 'user_token=' . $this->session->data['user_token'], true),
+            'children' => array()
+        );
+
+        $children[] = array(
+            'name' => $this->language->get('gdt_updater')->get('text_update'),
+            'href' => $this->url->link('extension/module/gdt_updater', 'user_token=' . $this->session->data['user_token'], true),
+            'children' => array()
+        );
+
+        $data['menus'][] = array(
+            'id' => 'menu-gdt-updater',
+            'name' => $this->language->get('gdt_updater')->get('heading_title'),
+            'href'     => '',
+                'icon' => 'fa fa-refresh',
+                'children' => $children,
+            ); 
+
+
+        foreach ($data['menus'] as &$menu) {
+            if ($menu['id'] == 'menu-extension') {
+                $menu['children'] = array_merge($menu['children'], $children);
+                break;
+            }
+        }
+   
     }
 
 
