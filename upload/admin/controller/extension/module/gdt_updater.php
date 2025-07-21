@@ -44,7 +44,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $data['save_settings_url'] = $this->url->link('extension/module/gdt_updater/saveSettings', 'user_token=' . $this->session->data['user_token'], true);
         $data['check_updates'] = $this->url->link('extension/module/gdt_updater/check', 'user_token=' . $this->session->data['user_token'], true);
         $data['toggle_auto_update_url'] = $this->url->link('extension/module/gdt_updater/toggleAutoUpdate', 'user_token=' . $this->session->data['user_token'], true);
-        $data['delete_multiple_url'] = $this->url->link('extension/module/gdt_updater/deleteMultiple', 'user_token=' . $this->session->data['user_token'], true);
+        $data['delete_multiple_url'] = html_entity_decode($this->url->link('extension/module/gdt_updater/deleteMultiple', 'user_token=' . $this->session->data['user_token'], true), ENT_QUOTES, 'UTF-8');
         $data['cancel'] = $this->url->link('marketplace/extension', 'user_token=' . $this->session->data['user_token'] . '&type=module', true);
 
         // Ссылки на страницы установки модулей
@@ -581,45 +581,24 @@ class ControllerExtensionModuleGdtUpdater extends Controller
 
 
 
-    public function install()
-    {
+    /**
+     * Установка модуля
+     */
+    public function install() {
+        // Создаем таблицу для хранения модулей
+        $this->manager->createModulesTable();
+
+        // Добавляем события
         $this->load->model('setting/event');
-        $this->model_setting_event->addEvent(
-            'auto_update_check', // Код события
-            'admin/controller/common/dashboard/before', // Триггер
-            'extension/module/gdt_updater/checkUpdates' // Обработчик
-        );
+        $this->model_setting_event->addEvent('auto_update_menu', 'admin/view/common/column_left/before', 'extension/module/gdt_updater/menuAdmin');
+        //получаем json 
+        $json = $this->manager->getJson('gdt_updater');
+        var_dump($json);
+        // Сохраняем информацию о модуле в базу данных
+        $this->manager->saveModuleToDatabase($json['code'], $json['version'], $json);
 
-        $this->model_setting_event->addEvent(
-            'auto_update_menu', // Код события
-            'admin/view/common/column_left/before', // Триггер
-            'extension/module/gdt_updater/menuAdmin' // Обработчик
-        );
-
-        // Автоматически добавляем и включаем Dashboard модуль
-        $this->load->model('setting/extension');
-        $this->load->model('setting/setting');
-
-        // Добавляем расширение в список установленных
-        $this->model_setting_extension->install('dashboard', 'gdt_updater');
-
-        // Настройки для Dashboard модуля
-        $dashboard_settings = array(
-            'dashboard_gdt_updater_width' => '6',      // Ширина модуля (половина экрана)
-            'dashboard_gdt_updater_status' => '1',     // Включен
-            'dashboard_gdt_updater_sort_order' => '1'  // Первое место
-        );
-
-        // Сохраняем настройки
-        $this->model_setting_setting->editSetting('dashboard_gdt_updater', $dashboard_settings);
-
-        // Переставляем все остальные dashboard модули с sort_order >= 1 на одну позицию вниз
-        // $this->db->query("UPDATE " . DB_PREFIX . "setting 
-        //                  SET value = (CAST(value AS UNSIGNED) + 1) 
-        //                  WHERE `key` LIKE '%_sort_order' 
-        //                  AND `code` LIKE 'dashboard_%' 
-        //                  AND `code` != 'dashboard_gdt_updater' 
-        //                  AND CAST(value AS UNSIGNED) >= 1");
+        // Логируем успешную установку
+        $this->log->write('GDT Updater: Таблица для хранения модулей успешно создана и события добавлены.');
     }
 
     public function uninstall()

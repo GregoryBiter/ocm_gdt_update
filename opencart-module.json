@@ -1,4 +1,12 @@
 {
+    "module_name": "GDT Updater System",
+    "creator_name": "gregorybiter",
+    "creator_email": "gregorybiter@gmail.com",
+    "code": "gdt_updater",
+    "version": "0.0.3",
+    "description": "OpenCart module update system with server and client components",
+    "provider": "provider/module/gdt_updater/boot",
+    "controller": "extension/module/gdt_updater",
     "files": [
         "admin/controller/extension/dashboard/gdt_updater.php",
         "admin/controller/extension/module/gdt_install_modules.php",
@@ -17,9 +25,10 @@
         "admin/view/template/extension/dashboard/gdt_updater_info.twig",
         "admin/view/template/extension/module/gdt_install_modules.twig",
         "admin/view/template/extension/module/gdt_updater.twig",
+        "admin/view/template/extension/module/gdt_updater_layout.twig",
+        "admin/view/template/extension/module/gdt_updaterr.twig",
         "system/library/gbitstudio/modules/manager.php",
         "system/library/gbitstudio/modules/tools.php",
-        "system/modules/gdt_updater/opencart-module.json",
-        "system/modules/test_module/opencart-module.json"
+        "system/modules/gdt_updater/opencart-module.json"
     ]
 }

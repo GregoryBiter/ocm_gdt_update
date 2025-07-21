@@ -25,74 +25,34 @@ class Manager {
     public function __get($name) {
         return $this->registry->get($name);
     }    /**
-     * Получает список установленных модулей
+     * Получает список установленных модулей из базы данных
      * 
      * @return array
      */
     public function getInstalledModules() {
-        $modules = array();
-        
-        // Проверяем, определена ли константа DIR_SYSTEM
-        if (!defined('DIR_SYSTEM')) {
-            if ($this->log) {
-                $this->log->write('GDT Module Manager error: DIR_SYSTEM constant is not defined');
-            }
-            return $modules;
-        }
-        
-        // Ищем файлы opencart-module.json в директории system/modules/*/
-        $modules_dirs = glob(constant('DIR_SYSTEM') . 'modules/*', GLOB_ONLYDIR);
-        
-        if ($modules_dirs) {
-            foreach ($modules_dirs as $module_dir) {
-                $module_config_file = $module_dir . '/opencart-module.json';
-                
-                // Проверяем, существует ли файл конфигурации модуля
-                if (file_exists($module_config_file)) {
-                    $module_data = json_decode(file_get_contents($module_config_file), true);
-                    
-                    if ($module_data && is_array($module_data)) {
-                        // Добавляем путь к файлу конфигурации
-                        $module_data['config_path'] = $module_config_file;
-                        $modules[] = $module_data;
-                        
-                        if ($this->log) {
-                            $this->log->write('GDT Module Manager: Found module ' . ($module_data['name'] ?? 'unknown') . ' in ' . $module_dir);
-                        }
-                    }
-                }
+        $db = $this->registry->get('db');
+        $query = "SELECT * FROM `gdt_modules`;";
+        $result = $db->query($query);
+
+        $modules = [];
+        if ($result->num_rows > 0) {
+            foreach ($result->rows as $row) {
+                $row = json_decode($row['data'], true);
+                $modules[] = $row;
             }
         }
-        
+
         return $modules;
     }
-    
+
     /**
-     * Получает модуль по коду
+     * Получает модуль по коду из базы данных
      * 
      * @param string $code Код модуля
      * @return array|null
      */
     public function getModuleByCode($code) {
-        $file_oc = glob(constant('DIR_SYSTEM') . 'modules/*/opencart-module.json');
-
-        foreach ($file_oc as $file) {
-            $module_data = json_decode(file_get_contents($file), true);
-            if (isset($module_data['code']) && $module_data['code'] === $code) {
-                return $module_data;
-            }
-        }
-
-        // или по имени папки
-        $module_dir = constant('DIR_SYSTEM') . 'modules/' . $code;
-        if (is_dir($module_dir) && is_file($module_dir . '/opencart-module.json')) {
-            $module_data = json_decode(file_get_contents($module_dir . '/opencart-module.json'), true);
-            if (isset($module_data['code']) && $module_data['code'] === $code) {
-                return $module_data;
-            }
-        }
-
-        return null;
+        return $this->getModuleFromDatabase($code);
     }
     
     /**
@@ -430,7 +390,7 @@ class Manager {
     }
     
     /**
-     * Обрабатывает файл конфигурации модуля при обновлении
+     * Обрабатывает файл конфигурации модуля при обновлении (сохранение в базу данных вместо файла)
      * 
      * @param string $extract_dir Директория с извлеченными файлами
      * @param array $module Информация о модуле
@@ -439,68 +399,19 @@ class Manager {
      */
     private function handleModuleConfig($extract_dir, $module, $update_info) {
         $module_code = $module['code'];
-        $target_config_dir = constant('DIR_SYSTEM') . 'modules/' . $module_code;
-        $target_config_path = $target_config_dir . '/opencart-module.json';
-        
-        // Вариант 1: Файл конфигурации в корне архива
         $root_config_path = $extract_dir . '/opencart-module.json';
-        
-        // Вариант 2: Файл конфигурации в system/modules/module_name/
-        $system_config_path = $extract_dir . '/upload/system/modules/' . $module_code . '/opencart-module.json';
-        if (!file_exists($system_config_path)) {
-            // Попробуем без upload подпапки
-            $system_config_path = $extract_dir . '/system/modules/' . $module_code . '/opencart-module.json';
-        }
-        
-        $config_updated = false;
-        
+
         if (file_exists($root_config_path)) {
-            // Случай 1: opencart-module.json в корне архива
-            $this->log->write('GDT Module Manager: Found opencart-module.json in archive root');
-            
-            // Создаем директорию модуля если не существует
-            if (!is_dir($target_config_dir)) {
-                mkdir($target_config_dir, 0755, true);
-            }
-            
-            // Полностью копируем новый файл конфигурации
-            $old_version = isset($module['version']) ? $module['version'] : 'unknown';
-            if (copy($root_config_path, $target_config_path)) {
-                $config_updated = true;
-                $this->log->write('GDT Module Manager: Copied complete config from archive root, updated from version ' . $old_version . ' to ' . $update_info['version']);
-            } else {
-                $this->log->write('GDT Module Manager: Failed to copy config file from archive root');
-            }
-        } elseif (file_exists($system_config_path)) {
-            // Случай 2: opencart-module.json в system/modules/module_name/ внутри архива
-            $this->log->write('GDT Module Manager: Found opencart-module.json in system/modules structure, already copied via copyDirectory');
-            
-            // В этом случае файл уже скопирован через copyDirectory
-            // Проверяем, что файл действительно скопирован
-            if (file_exists($target_config_path)) {
-                $config_updated = true;
-                $old_version = isset($module['version']) ? $module['version'] : 'unknown';
-                $this->log->write('GDT Module Manager: Complete config copied from system structure, updated from version ' . $old_version . ' to ' . $update_info['version']);
-            }
-        } else {
-            // Случай 3: Файл конфигурации не найден в архиве, обновляем существующий
-            $this->log->write('GDT Module Manager: No opencart-module.json found in archive, keeping existing config with version update');
-            
-            if (isset($module['config_path']) && file_exists($module['config_path'])) {
-                $config_data = json_decode(file_get_contents($module['config_path']), true);
-                if ($config_data) {
-                    $old_version = $config_data['version'] ?? 'unknown';
-                    $config_data['version'] = $update_info['version'];
-                    $config_written = file_put_contents($module['config_path'], json_encode($config_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-                    if ($config_written !== false) {
-                        $config_updated = true;
-                        $this->log->write('GDT Module Manager: Updated existing config version from ' . $old_version . ' to ' . $update_info['version']);
-                    }
-                }
+            $config_data = json_decode(file_get_contents($root_config_path), true);
+            if ($config_data) {
+                $this->saveModuleToDatabase($module_code, $update_info['version'], $config_data);
+                $this->log->write('GDT Module Manager: Updated module config in database for ' . $module_code);
+                return true;
             }
         }
-        
-        return $config_updated;
+
+        $this->log->write('GDT Module Manager: No valid opencart-module.json found for ' . $module_code);
+        return false;
     }
     
     /**
@@ -598,7 +509,9 @@ class Manager {
 
         // Создаем временную папку для извлечения
         $temp_dir = (defined('DIR_STORAGE') ? constant('DIR_STORAGE') : sys_get_temp_dir() . '/') . 'upload/gdt_module_' . $module_code . '_' . time();
-        mkdir($temp_dir, 0755, true);
+        if (!is_dir($temp_dir)) {
+            mkdir($temp_dir, 0755, true);
+        }
 
         // Извлекаем архив
         if (!$zip->extractTo($temp_dir)) {
@@ -935,11 +848,15 @@ class Manager {
         }
 
         try {
+
+            // Запускаем метод деинсталляции в контроллере модуля, если он есть
+            if (isset($module['controller'])) {
+                $this->load->controller($module['controller'] . '/uninstall');
+            }
+
             // Удаляем файлы модуля
             $this->removeModuleFiles($module);
-            
-            // Удаляем записи из базы данных модуля (если есть)
-            $this->removeModuleDatabaseEntries($module);
+        
             
             // Удаляем файл конфигурации модуля
             $this->removeModuleConfig($module_code);
@@ -1048,51 +965,6 @@ class Manager {
         }
 
         return true;
-    }
-
-    /**
-     * Удаляет записи модуля из базы данных
-     * 
-     * @param array $module Данные модуля
-     * @return bool
-     */
-    private function removeModuleDatabaseEntries($module) {
-        if (!isset($this->registry)) {
-            return false;
-        }
-
-        $db = $this->registry->get('db');
-        if (!$db) {
-            return false;
-        }
-
-        $module_code = $module['code'];
-
-        try {
-            // Получаем DB_PREFIX из конфигурации
-            $config = $this->registry->get('config');
-            $db_prefix = defined('DB_PREFIX') ? constant('DB_PREFIX') : ($config ? $config->get('db_prefix') : 'oc_');
-            
-            // Удаляем настройки модуля
-            $db->query("DELETE FROM `" . $db_prefix . "setting` WHERE `code` LIKE 'module_" . $db->escape($module_code) . "%'");
-            
-            // Удаляем события модуля
-            $db->query("DELETE FROM `" . $db_prefix . "event` WHERE `code` LIKE '%" . $db->escape($module_code) . "%'");
-            
-            // Удаляем модуль из списка расширений
-            $db->query("DELETE FROM `" . $db_prefix . "extension` WHERE `code` = '" . $db->escape($module_code) . "'");
-
-            if ($this->log) {
-                $this->log->write('GDT Module Manager: Removed database entries for module ' . $module_code);
-            }
-
-            return true;
-        } catch (\Exception $e) {
-            if ($this->log) {
-                $this->log->write('GDT Module Manager error: Failed to remove database entries for ' . $module_code . ': ' . $e->getMessage());
-            }
-            return false;
-        }
     }
 
     /**
@@ -1276,6 +1148,101 @@ class Manager {
         } else {
             $error_msg = isset($decoded['error']) ? $decoded['error'] : 'Неизвестная ошибка API';
             throw new \Exception('Ошибка API сервера модулей: ' . $error_msg);
+        }
+    }
+    
+    /**
+     * Создает таблицу для хранения информации о модулях
+     */
+    public function createModulesTable() {
+        $db = $this->registry->get('db');
+        $query = "CREATE TABLE IF NOT EXISTS `gdt_modules` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `module_code` VARCHAR(255) NOT NULL,
+            `version` VARCHAR(50) NOT NULL,
+            `data` JSON NOT NULL,
+            UNIQUE KEY `module_code` (`module_code`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
+
+        $db->query($query);
+    }
+
+    /**
+     * Сохраняет информацию о модуле в базу данных
+     * 
+     * @param string $module_code Код модуля
+     * @param string $version Версия модуля
+     * @param array $data Дополнительные данные модуля
+     * @return bool
+     */
+public function saveModuleToDatabase($module_code, $version, $data) {
+    $db = $this->registry->get('db');
+    $json_data = json_encode($data, JSON_UNESCAPED_UNICODE);
+
+    // Проверяем, существует ли модуль с таким кодом
+    $query_check = "SELECT COUNT(*) as count FROM `gdt_modules` WHERE `module_code` = '" . $db->escape($module_code) . "';";
+    $result = $db->query($query_check);
+
+    if ($result->row['count'] > 0) {
+        // Модуль уже существует
+        throw new \Exception('Модуль с кодом ' . $module_code . ' уже существует в базе данных.');
+    }
+
+    // Если модуля нет, добавляем его
+    $query = "INSERT INTO `gdt_modules` (`module_code`, `version`, `data`) VALUES ('" . $db->escape($module_code) . "', '" . $db->escape($version) . "', '" . $db->escape($json_data) . "');";
+
+    return $db->query($query);
+}
+
+    /**
+     * Получает информацию о модуле из базы данных
+     * 
+     * @param string $module_code Код модуля
+     * @return array|null
+     */
+    public function getModuleFromDatabase($module_code) {
+        $db = $this->registry->get('db');
+        $query = "SELECT * FROM `gdt_modules` WHERE `module_code` = '" . $db->escape($module_code) . "' LIMIT 1;";
+        $result = $db->query($query);
+
+        if ($result->num_rows > 0) {
+            $result = json_decode($result->row['data'], true);
+            $result['code'] = $result->row['module_code'];
+            return $result;
+        }
+
+        return null;
+    }
+
+    /**
+     * Удаляет информацию о модуле из базы данных
+     * 
+     * @param string $module_code Код модуля
+     * @return bool
+     */
+    public function deleteModuleFromDatabase($module_code) {
+        $db = $this->registry->get('db');
+        $query = "DELETE FROM `gdt_modules` WHERE `module_code` = '" . $db->escape($module_code) . "';";
+        return $db->query($query);
+    }
+
+    public function getJson(){
+        $file = constant('DIR_SYSTEM') . 'modules/gdt_updater/opencart-module.json';
+        if (file_exists($file)) {
+            $json = file_get_contents($file);
+            var_dump($json);
+            if ($json !== false) {
+                $data = json_decode($json, true);
+                if (json_last_error() === JSON_ERROR_NONE) {        
+                    return $data;
+                } else {
+                    $this->logError('GDT Module Manager: JSON decode error - ' . json_last_error_msg());
+                    return null;
+                }
+            } else {
+                $this->logError('GDT Module Manager: Failed to read JSON file');
+                return null;
+            }
         }
     }
 }
