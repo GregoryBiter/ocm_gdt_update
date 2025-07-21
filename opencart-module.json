@@ -17,7 +17,6 @@
         "admin/view/template/extension/dashboard/gdt_updater_info.twig",
         "admin/view/template/extension/module/gdt_install_modules.twig",
         "admin/view/template/extension/module/gdt_updater.twig",
-        "admin/view/template/extension/module/gdt_updater_layout.twig",
         "system/library/gbitstudio/modules/manager.php",
         "system/library/gbitstudio/modules/tools.php",
         "system/modules/gdt_updater/opencart-module.json",
