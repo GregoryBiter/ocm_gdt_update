@@ -44,6 +44,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $data['save_settings_url'] = $this->url->link('extension/module/gdt_updater/saveSettings', 'user_token=' . $this->session->data['user_token'], true);
         $data['check_updates'] = $this->url->link('extension/module/gdt_updater/check', 'user_token=' . $this->session->data['user_token'], true);
         $data['toggle_auto_update_url'] = $this->url->link('extension/module/gdt_updater/toggleAutoUpdate', 'user_token=' . $this->session->data['user_token'], true);
+        $data['delete_multiple_url'] = $this->url->link('extension/module/gdt_updater/deleteMultiple', 'user_token=' . $this->session->data['user_token'], true);
         $data['cancel'] = $this->url->link('marketplace/extension', 'user_token=' . $this->session->data['user_token'] . '&type=module', true);
 
         // Ссылки на страницы установки модулей
@@ -111,15 +112,23 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                 'has_update' => false,
                 'new_version' => '',
                 'update_url' => '',
+                'delete_url' => '',
                 'has_backup' => false,
                 'settings_url' => '',
                 'auto_update' => false
             );
 
             // Ссылка на настройки модуля (если есть)
-            if (!empty($module['code'])) {
+            if (!empty($module['controller'])) {
+                $settings_route = $module['controller'];
+                $module_data['settings_url'] = $this->url->link($settings_route, 'user_token=' . $this->session->data['user_token'], true);
+            }
+            elseif (!empty($module['code'])) {
                 $settings_route = 'extension/module/' . $module['code'];
                 $module_data['settings_url'] = $this->url->link($settings_route, 'user_token=' . $this->session->data['user_token'], true);
+                
+                // Ссылка на удаление модуля
+                $module_data['delete_url'] = $this->url->link('extension/module/gdt_updater/delete', 'user_token=' . $this->session->data['user_token'] . '&code=' . $module['code'], true);
             }
 
             if (!empty($server_url)) {
@@ -451,6 +460,118 @@ class ControllerExtensionModuleGdtUpdater extends Controller
             $json['success'] = 'Настройки автообновления сохранены';
         } else {
             $json['error'] = 'Неверные параметры запроса';
+        }
+
+        $this->response->addHeader('Content-Type: application/json');
+        $this->response->setOutput(json_encode($json));
+    }
+
+    /**
+     * Удаление модуля
+     */
+    public function delete()
+    {
+        $this->load->language('extension/module/gdt_updater');
+
+        $json = array();
+
+        if (!$this->user->hasPermission('modify', 'extension/module/gdt_updater')) {
+            $json['error'] = $this->language->get('error_permission');
+        } elseif (isset($this->request->get['code'])) {
+            $code = $this->request->get['code'];
+
+            try {
+                // Проверяем, что модуль существует
+                $module = $this->manager->getModuleByCode($code);
+                if (!$module) {
+                    $json['error'] = 'Модуль ' . $code . ' не найден';
+                } else {
+                    // Логируем начало процесса удаления
+                    $this->log->write('GDT Updater: Starting deletion for module ' . $code);
+                    
+                    // Удаляем модуль
+                    $result = $this->manager->uninstall($code);
+
+                    if ($result === true) {
+                        // Очищаем все кэши OpenCart
+                        $this->manager->clearCache();
+                        
+                        $json['success'] = sprintf('Модуль %s успешно удален', $module['module_name'] ?? $module['name'] ?? $code);
+                        
+                        $this->log->write('GDT Updater: Successfully deleted module ' . $code);
+                    } else {
+                        $json['error'] = is_string($result) ? $result : 'Неизвестная ошибка при удалении модуля';
+                    }
+                }
+            } catch (Exception $e) {
+                $json['error'] = 'Ошибка при удалении модуля: ' . $e->getMessage();
+                $this->log->write('GDT Updater error: ' . $e->getMessage());
+            }
+        } else {
+            $json['error'] = 'Не указан код модуля для удаления';
+        }
+
+        $this->response->addHeader('Content-Type: application/json');
+        $this->response->setOutput(json_encode($json));
+    }
+
+    /**
+     * Массовое удаление модулей
+     */
+    public function deleteMultiple()
+    {
+        $this->load->language('extension/module/gdt_updater');
+
+        $json = array();
+
+        if (!$this->user->hasPermission('modify', 'extension/module/gdt_updater')) {
+            $json['error'] = $this->language->get('error_permission');
+        } elseif (($this->request->server['REQUEST_METHOD'] == 'POST') && isset($this->request->post['modules']) && is_array($this->request->post['modules'])) {
+            $modules = $this->request->post['modules'];
+            $deleted = array();
+            $errors = array();
+
+            foreach ($modules as $code) {
+                try {
+                    // Проверяем, что модуль существует
+                    $module = $this->manager->getModuleByCode($code);
+                    if (!$module) {
+                        $errors[] = 'Модуль ' . $code . ' не найден';
+                        continue;
+                    }
+
+                    // Логируем начало процесса удаления
+                    $this->log->write('GDT Updater: Starting deletion for module ' . $code);
+                    
+                    // Удаляем модуль
+                    $result = $this->manager->uninstall($code);
+
+                    if ($result === true) {
+                        $deleted[] = $module['module_name'] ?? $module['name'] ?? $code;
+                        $this->log->write('GDT Updater: Successfully deleted module ' . $code);
+                    } else {
+                        $errors[] = $code . ': ' . (is_string($result) ? $result : 'Неизвестная ошибка');
+                    }
+                } catch (Exception $e) {
+                    $errors[] = $code . ': ' . $e->getMessage();
+                    $this->log->write('GDT Updater error: ' . $e->getMessage());
+                }
+            }
+
+            // Очищаем все кэши OpenCart после всех операций
+            if (!empty($deleted)) {
+                $this->manager->clearCache();
+            }
+
+            if (!empty($deleted) && empty($errors)) {
+                $json['success'] = sprintf('Успешно удалено модулей: %d (%s)', count($deleted), implode(', ', $deleted));
+            } elseif (!empty($deleted) && !empty($errors)) {
+                $json['warning'] = sprintf('Удалено модулей: %d (%s). Ошибки: %s', count($deleted), implode(', ', $deleted), implode('; ', $errors));
+            } else {
+                $json['error'] = 'Ошибки при удалении: ' . implode('; ', $errors);
+            }
+        } else {
+            $json['error'] = 'Не указаны модули для удаления';
         }
 
         $this->response->addHeader('Content-Type: application/json');

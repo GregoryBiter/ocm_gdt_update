@@ -914,16 +914,281 @@ class Manager {
     }
     
     /**
-     * Удаление модуля
+     * Удаление модуля по JSON-данным
+     * 
+     * @param string $module_code Код модуля
+     * @return bool|string
+     */
+    public function uninstall($module_code) {
+        if ($this->log) {
+            $this->log->write('GDT Module Manager: Starting uninstall for module ' . $module_code);
+        }
+
+        // Получаем данные модуля
+        $module = $this->getModuleByCode($module_code);
+        if (!$module) {
+            $error = 'Модуль ' . $module_code . ' не найден';
+            if ($this->log) {
+                $this->log->write('GDT Module Manager error: ' . $error);
+            }
+            return $error;
+        }
+
+        try {
+            // Удаляем файлы модуля
+            $this->removeModuleFiles($module);
+            
+            // Удаляем записи из базы данных модуля (если есть)
+            $this->removeModuleDatabaseEntries($module);
+            
+            // Удаляем файл конфигурации модуля
+            $this->removeModuleConfig($module_code);
+            
+            if ($this->log) {
+                $this->log->write('GDT Module Manager: Successfully uninstalled module ' . $module_code);
+            }
+            
+            return true;
+        } catch (\Exception $e) {
+            $error = 'Ошибка при удалении модуля ' . $module_code . ': ' . $e->getMessage();
+            if ($this->log) {
+                $this->log->write('GDT Module Manager error: ' . $error);
+            }
+            return $error;
+        }
+    }
+
+    /**
+     * Удаляет файлы модуля на основе JSON-конфигурации
+     * 
+     * @param array $module Данные модуля из JSON
+     * @return bool
+     */
+    private function removeModuleFiles($module) {
+        if (!defined('DIR_APPLICATION')) {
+            throw new \Exception('DIR_APPLICATION не определена');
+        }
+
+        $deleted_files = [];
+        $errors = [];
+
+        // Удаляем файлы из массива files
+        if (isset($module['files']) && is_array($module['files'])) {
+            foreach ($module['files'] as $file) {
+                $file_path = rtrim(dirname(constant('DIR_APPLICATION')), '/') . '/' . ltrim($file, '/');
+                
+                if (file_exists($file_path)) {
+                    if (unlink($file_path)) {
+                        $deleted_files[] = $file;
+                        if ($this->log) {
+                            $this->log->write('GDT Module Manager: Deleted file ' . $file);
+                        }
+                    } else {
+                        $errors[] = 'Не удалось удалить файл: ' . $file;
+                        if ($this->log) {
+                            $this->log->write('GDT Module Manager error: Failed to delete file ' . $file);
+                        }
+                    }
+                } else {
+                    if ($this->log) {
+                        $this->log->write('GDT Module Manager: File not found (already deleted?): ' . $file);
+                    }
+                }
+            }
+        }
+
+        // Удаляем файлы из массива delete (если есть)
+        if (isset($module['delete']) && is_array($module['delete'])) {
+            foreach ($module['delete'] as $delete_item) {
+                // Поддерживаем как строки, так и объекты с path
+                $delete_path = is_array($delete_item) ? $delete_item['path'] : $delete_item;
+                $file_path = rtrim(dirname(constant('DIR_APPLICATION')), '/') . '/' . ltrim($delete_path, '/');
+                
+                if (file_exists($file_path)) {
+                    if (is_dir($file_path)) {
+                        // Удаляем директорию
+                        if ($this->removeDirectory($file_path)) {
+                            $deleted_files[] = $delete_path . ' (directory)';
+                            if ($this->log) {
+                                $this->log->write('GDT Module Manager: Deleted directory ' . $delete_path);
+                            }
+                        } else {
+                            $errors[] = 'Не удалось удалить директорию: ' . $delete_path;
+                            if ($this->log) {
+                                $this->log->write('GDT Module Manager error: Failed to delete directory ' . $delete_path);
+                            }
+                        }
+                    } else {
+                        // Удаляем файл
+                        if (unlink($file_path)) {
+                            $deleted_files[] = $delete_path;
+                            if ($this->log) {
+                                $this->log->write('GDT Module Manager: Deleted file ' . $delete_path);
+                            }
+                        } else {
+                            $errors[] = 'Не удалось удалить файл: ' . $delete_path;
+                            if ($this->log) {
+                                $this->log->write('GDT Module Manager error: Failed to delete file ' . $delete_path);
+                            }
+                        }
+                    }
+                } else {
+                    if ($this->log) {
+                        $this->log->write('GDT Module Manager: File/directory not found (already deleted?): ' . $delete_path);
+                    }
+                }
+            }
+        }
+
+        // Очищаем пустые директории
+        $this->cleanupEmptyDirectories($deleted_files);
+
+        if (!empty($errors)) {
+            throw new \Exception(implode('; ', $errors));
+        }
+
+        return true;
+    }
+
+    /**
+     * Удаляет записи модуля из базы данных
+     * 
+     * @param array $module Данные модуля
+     * @return bool
+     */
+    private function removeModuleDatabaseEntries($module) {
+        if (!isset($this->registry)) {
+            return false;
+        }
+
+        $db = $this->registry->get('db');
+        if (!$db) {
+            return false;
+        }
+
+        $module_code = $module['code'];
+
+        try {
+            // Получаем DB_PREFIX из конфигурации
+            $config = $this->registry->get('config');
+            $db_prefix = defined('DB_PREFIX') ? constant('DB_PREFIX') : ($config ? $config->get('db_prefix') : 'oc_');
+            
+            // Удаляем настройки модуля
+            $db->query("DELETE FROM `" . $db_prefix . "setting` WHERE `code` LIKE 'module_" . $db->escape($module_code) . "%'");
+            
+            // Удаляем события модуля
+            $db->query("DELETE FROM `" . $db_prefix . "event` WHERE `code` LIKE '%" . $db->escape($module_code) . "%'");
+            
+            // Удаляем модуль из списка расширений
+            $db->query("DELETE FROM `" . $db_prefix . "extension` WHERE `code` = '" . $db->escape($module_code) . "'");
+
+            if ($this->log) {
+                $this->log->write('GDT Module Manager: Removed database entries for module ' . $module_code);
+            }
+
+            return true;
+        } catch (\Exception $e) {
+            if ($this->log) {
+                $this->log->write('GDT Module Manager error: Failed to remove database entries for ' . $module_code . ': ' . $e->getMessage());
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Удаляет конфигурационный файл модуля
      * 
      * @param string $module_code Код модуля
      * @return bool
      */
-    public function uninstall($module_code) {
-        // Логика удаления модуля
-        if ($this->log) {
-            $this->log->write('GDT Module Manager: Uninstalling module ' . $module_code);
+    private function removeModuleConfig($module_code) {
+        if (!defined('DIR_SYSTEM')) {
+            return false;
         }
+
+        $config_path = constant('DIR_SYSTEM') . 'modules/' . $module_code . '/opencart-module.json';
+        
+        if (file_exists($config_path)) {
+            if (unlink($config_path)) {
+                if ($this->log) {
+                    $this->log->write('GDT Module Manager: Removed config file for module ' . $module_code);
+                }
+                
+                // Удаляем директорию модуля, если она пустая
+                $module_dir = dirname($config_path);
+                if (is_dir($module_dir) && count(scandir($module_dir)) == 2) { // только . и ..
+                    rmdir($module_dir);
+                    if ($this->log) {
+                        $this->log->write('GDT Module Manager: Removed empty module directory ' . $module_dir);
+                    }
+                }
+                
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Очищает пустые директории после удаления файлов
+     * 
+     * @param array $deleted_files Список удаленных файлов
+     * @return void
+     */
+    private function cleanupEmptyDirectories($deleted_files) {
+        if (!defined('DIR_APPLICATION')) {
+            return;
+        }
+
+        $base_path = rtrim(dirname(constant('DIR_APPLICATION')), '/');
+        $directories_to_check = [];
+
+        // Собираем список директорий для проверки
+        foreach ($deleted_files as $file) {
+            $dir = dirname($base_path . '/' . ltrim($file, '/'));
+            while ($dir !== $base_path && !in_array($dir, $directories_to_check)) {
+                $directories_to_check[] = $dir;
+                $dir = dirname($dir);
+            }
+        }
+
+        // Сортируем по глубине (самые глубокие первыми)
+        usort($directories_to_check, function($a, $b) {
+            return substr_count($b, '/') - substr_count($a, '/');
+        });
+
+        // Удаляем пустые директории
+        foreach ($directories_to_check as $dir) {
+            if (is_dir($dir) && $this->isDirectoryEmpty($dir)) {
+                if (rmdir($dir)) {
+                    if ($this->log) {
+                        $this->log->write('GDT Module Manager: Removed empty directory ' . $dir);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Проверяет, пуста ли директория
+     * 
+     * @param string $dir Путь к директории
+     * @return bool
+     */
+    private function isDirectoryEmpty($dir) {
+        if (!is_dir($dir)) {
+            return false;
+        }
+
+        $handle = opendir($dir);
+        while (false !== ($entry = readdir($handle))) {
+            if ($entry != "." && $entry != "..") {
+                closedir($handle);
+                return false;
+            }
+        }
+        closedir($handle);
         return true;
     }
     

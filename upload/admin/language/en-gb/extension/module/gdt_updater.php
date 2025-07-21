@@ -33,6 +33,8 @@ $_['help_api_key']           = 'Enter the API key provided by your update server
 // Button
 $_['button_check']           = 'Check Now';
 $_['button_update']          = 'Update';
+$_['button_delete']          = 'Delete';
+$_['button_delete_selected'] = 'Delete Selected';
 $_['button_back']            = 'Back';
 
 // Error
@@ -48,4 +50,16 @@ $_['error_zip']              = 'Failed to open the update package.';
 $_['error_curl']             = 'cURL error: %s';
 $_['error_http']             = 'HTTP error code: %s';
 $_['error_auth']             = 'Authentication failed. Please check your Client ID and API Key.';
+$_['error_delete_failed']    = 'Failed to delete module.';
+
+// Success  
+$_['text_delete_success']    = 'Module %s successfully deleted.';
+$_['text_delete_confirm']    = 'Are you sure you want to delete this module? All module files will be deleted!';
+$_['text_delete_multiple_confirm'] = 'Are you sure you want to delete selected modules? All module files will be deleted!';
+$_['error_delete_failed']    = 'Failed to delete the module.';
+
+// Success
+$_['text_delete_success']    = 'Module %s has been successfully deleted.';
+$_['text_delete_confirm']    = 'Are you sure you want to delete this module? All module files will be removed!';
+$_['text_delete_multiple_confirm'] = 'Are you sure you want to delete the selected modules? All module files will be removed!';
 $_['error_server_auth']      = 'Update server authentication error: %s';

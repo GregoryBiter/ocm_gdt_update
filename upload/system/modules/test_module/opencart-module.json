@@ -9,5 +9,9 @@
     "files": [
         "admin/controller/extension/module/test_module.php",
         "system/hook/test_module.php"
+    ],
+    "delete": [
+        "system/temp/test_module/",
+        "system/logs/test_module.log"
     ]
 }

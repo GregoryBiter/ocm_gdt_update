@@ -33,6 +33,8 @@ $_['help_api_key']           = 'Введіть API-ключ, наданий ад
 // Button
 $_['button_check']           = 'Check Now';
 $_['button_update']          = 'Update';
+$_['button_delete']          = 'Видалити';
+$_['button_delete_selected'] = 'Видалити обрані';
 $_['button_back']            = 'Назад';
 
 // Error
@@ -48,4 +50,10 @@ $_['error_zip']              = 'Failed to open the update package.';
 $_['error_curl']             = 'Помилка cURL: %s';
 $_['error_http']             = 'Код HTTP помилки: %s';
 $_['error_auth']             = 'Помилка аутентифікації. Будь ласка, перевірте ID клієнта та API-ключ.';
+$_['error_delete_failed']    = 'Помилка при видаленні модуля.';
+
+// Success
+$_['text_delete_success']    = 'Модуль %s успішно видалено.';
+$_['text_delete_confirm']    = 'Ви впевнені, що хочете видалити цей модуль? Всі файли модуля будуть видалені!';
+$_['text_delete_multiple_confirm'] = 'Ви впевнені, що хочете видалити обрані модулі? Всі файли модулів будуть видалені!';
 $_['error_server_auth']      = 'Помилка аутентифікації на сервері оновлень: %s';

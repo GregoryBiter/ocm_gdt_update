@@ -6,7 +6,7 @@
     "version": "0.0.3",
     "description": "OpenCart module update system with server and client components",
     "provider": "provider/module/gdt_updater/boot",
-    "controller": "admin/controller/extension/module/gdt_updater.php",
+    "controller": "extension/module/gdt_updater",
     "files": [
         "admin/controller/extension/dashboard/gdt_updater.php",
         "admin/controller/extension/module/gdt_install_modules.php",
