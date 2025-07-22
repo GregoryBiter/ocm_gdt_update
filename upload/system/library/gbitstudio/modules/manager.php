@@ -1140,6 +1140,7 @@ class Manager {
         if ($http_code != 200) {
             if ($this->log) {
                 $this->log->write('GDT Module Manager HTTP error: ' . $http_code);
+                $this->log->write('GDT Module Manager response: ' . $response);
             }
             throw new \Exception('HTTP ошибка: ' . $http_code);
         }

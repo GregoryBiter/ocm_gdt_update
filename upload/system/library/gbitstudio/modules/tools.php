@@ -1,5 +1,5 @@
 <?php
-namespace GbitStudio\Updater;
+namespace GbitStudio\Modules;
 class Tools
 {
 
