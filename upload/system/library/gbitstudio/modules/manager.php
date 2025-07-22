@@ -529,7 +529,17 @@ class Manager {
             $this->removeDirectory($temp_dir);
             throw new \Exception('Ошибка копирования файлов: ' . $e->getMessage());
         }
-
+        if(is_file($temp_dir . '/opencart-module.json')) {
+            $json = file_get_contents($temp_dir . '/opencart-module.json');
+            $json_data = json_decode($json, true);
+            
+        }else {
+            $json_data = [
+                'version' => '0.0.0',
+                'code' => $module_code,
+            ];
+        }
+        $this->saveModuleToDatabase($module_code, $json_data['version'], $json_data);
         // Удаляем временную папку
         $this->removeDirectory($temp_dir);
     }
