@@ -11,6 +11,6 @@
 class ControllerExtensionModuleTestModule extends Controller {
     
     public function index() {
-        echo "Test Module v1.0.1";
+        //echo "Test Module v1.0.1";
     }
 }

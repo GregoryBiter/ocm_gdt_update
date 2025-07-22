@@ -43,7 +43,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $data['settings_url'] = $this->url->link('extension/module/gdt_updater/settings', 'user_token=' . $this->session->data['user_token'], true);
         $data['save_settings_url'] = $this->url->link('extension/module/gdt_updater/saveSettings', 'user_token=' . $this->session->data['user_token'], true);
         $data['check_updates'] = $this->url->link('extension/module/gdt_updater/check', 'user_token=' . $this->session->data['user_token'], true);
-        $data['toggle_auto_update_url'] = $this->url->link('extension/module/gdt_updater/toggleAutoUpdate', 'user_token=' . $this->session->data['user_token'], true);
+        $data['toggle_auto_update_url'] = html_entity_decode($this->url->link('extension/module/gdt_updater/toggleAutoUpdate', 'user_token=' . $this->session->data['user_token'], true));
         $data['delete_multiple_url'] = html_entity_decode($this->url->link('extension/module/gdt_updater/deleteMultiple', 'user_token=' . $this->session->data['user_token'], true), ENT_QUOTES, 'UTF-8');
         $data['cancel'] = $this->url->link('marketplace/extension', 'user_token=' . $this->session->data['user_token'] . '&type=module', true);
 
@@ -98,7 +98,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $server_url = $this->config->get('module_gdt_updater_server');
 
         if (empty($server_url)) {
-            $server_url = HTTP_SERVER . 'ocm_gdt_update/server';
+            throw new \Exception('Server URL is not configured. Please set it in module settings.');
         }
 
         foreach ($installed_modules as $module) {
@@ -300,6 +300,8 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                     $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
 
                     $update_info = $this->manager->checkModuleUpdate($server_url, $module, '', $api_key);
+                    $this->log->write('GDT Updater: Checking updates for module ' . $module['code'] . ' - Current version: ' . $module['version']);
+                    $this->log->write('GDT Updater: Update info: ' . json_encode($update_info), true);
 
                     // Проверяем на ошибки curl
                     if (is_array($update_info) && isset($update_info['error'])) {
@@ -360,7 +362,10 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                 }
                 // Если ничего не подошло, используем значение по умолчанию
                 else {
-                    $server_url = 'https://example.com/server';
+                    $json['error'] = $this->language->get('error_server');
+                    $this->response->addHeader('Content-Type: application/json');
+                    $this->response->setOutput(json_encode($json));
+                    return;
                 }
             }
 
@@ -373,9 +378,9 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                 if ($module) {
                     // Получаем API-ключ
                     $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
-
                     // Проверяем обновление
                     $update_info = $this->manager->checkModuleUpdate($server_url, $module, '', $api_key);
+        
 
                     // Проверяем на ошибки curl
                     if (is_array($update_info) && isset($update_info['error'])) {
@@ -592,10 +597,14 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $this->load->model('setting/event');
         $this->model_setting_event->addEvent('auto_update_menu', 'admin/view/common/column_left/before', 'extension/module/gdt_updater/menuAdmin');
         //получаем json 
-        $json = $this->manager->getJson('gdt_updater');
-        var_dump($json);
-        // Сохраняем информацию о модуле в базу данных
-        $this->manager->saveModuleToDatabase($json['code'], $json['version'], $json);
+        $gdt_updater_json = $this->manager->getJson('gdt_updater');
+        if ($gdt_updater_json) {
+        $this->$manager->saveModuleToDatabase(
+            'gdt_updater', 
+            $gdt_updater_json['version'] ?? '1.0.0', 
+            $gdt_updater_json
+        );
+    }
 
         // Логируем успешную установку
         $this->log->write('GDT Updater: Таблица для хранения модулей успешно создана и события добавлены.');

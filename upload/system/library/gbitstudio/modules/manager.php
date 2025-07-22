@@ -42,6 +42,22 @@ class Manager {
             }
         }
 
+         // Добавляем сам gdt_updater если его нет в списке
+    $gdt_updater_found = false;
+    foreach ($modules as $module) {
+        if (isset($module['code']) && $module['code'] === 'gdt_updater') {
+            $gdt_updater_found = true;
+            break;
+        }
+    }
+
+    if (!$gdt_updater_found) {
+        $gdt_updater_data = $this->getJson();
+        if ($gdt_updater_data) {
+            $modules[] = $gdt_updater_data;
+        }
+    }
+
         return $modules;
     }
 
@@ -65,6 +81,7 @@ class Manager {
      * @return array|bool
      */
     public function checkModuleUpdate($server_url, $module, $client_id = 'default', $api_key = '') {
+        $this->log->write('param: '. json_encode([$server_url, $module, $client_id, $api_key], JSON_PRETTY_PRINT));
         $url = rtrim($server_url, '/') . '/index.php?route=gdt_update_server/check';
         
         // Получаем API ключ из настроек, если не передан
@@ -76,7 +93,7 @@ class Manager {
         if (!empty($api_key)) {
             $this->log->write('GDT Module Manager Debug: API request for module ' . $module['code'] . ' with API key');
         }
-        
+        $this->log->write('GDT Module Manager Debug: Checking update for module ' . json_encode($module));
         // Данные в соответствии с серверной авторизацией
         $post_data = array(
             'code' => $module['code'],
@@ -135,7 +152,10 @@ class Manager {
                 return $update_info;
             }
         }
-        
+
+        $this->log->write('GDT Module Manager: No update available for module ' . $module['code']);
+        $this->log->write(json_encode([$error, $http_code, $response], JSON_PRETTY_PRINT));
+        $this->log->write(json_encode([http_build_query($post_data), $$url], JSON_PRETTY_PRINT));
         return false;
     }
     
@@ -404,7 +424,12 @@ class Manager {
         if (file_exists($root_config_path)) {
             $config_data = json_decode(file_get_contents($root_config_path), true);
             if ($config_data) {
-                $this->saveModuleToDatabase($module_code, $update_info['version'], $config_data);
+                try {
+                    $this->saveModuleToDatabase($module_code, $update_info['version'], $config_data);
+                } catch (\Exception $e) {
+                    $this->log->write('GDT Module Manager: Error updating module config in database for ' . $module_code . ': ' . $e->getMessage());
+                }
+                
                 $this->log->write('GDT Module Manager: Updated module config in database for ' . $module_code);
                 return true;
             }
@@ -1195,14 +1220,20 @@ public function saveModuleToDatabase($module_code, $version, $data) {
     $result = $db->query($query_check);
 
     if ($result->row['count'] > 0) {
-        // Модуль уже существует
-        throw new \Exception('Модуль с кодом ' . $module_code . ' уже существует в базе данных.');
+        // Если модуль существует, обновляем его данные
+        $query_update = "UPDATE `gdt_modules` 
+                         SET `version` = '" . $db->escape($version) . "', 
+                             `data` = '" . $db->escape($json_data) . "' 
+                         WHERE `module_code` = '" . $db->escape($module_code) . "';";
+        return $db->query($query_update);
+    } else {
+        // Если модуля нет, добавляем его
+        $query_insert = "INSERT INTO `gdt_modules` (`module_code`, `version`, `data`) 
+                         VALUES ('" . $db->escape($module_code) . "', 
+                                 '" . $db->escape($version) . "', 
+                                 '" . $db->escape($json_data) . "');";
+        return $db->query($query_insert);
     }
-
-    // Если модуля нет, добавляем его
-    $query = "INSERT INTO `gdt_modules` (`module_code`, `version`, `data`) VALUES ('" . $db->escape($module_code) . "', '" . $db->escape($version) . "', '" . $db->escape($json_data) . "');";
-
-    return $db->query($query);
 }
 
     /**
@@ -1217,9 +1248,11 @@ public function saveModuleToDatabase($module_code, $version, $data) {
         $result = $db->query($query);
 
         if ($result->num_rows > 0) {
-            $result = json_decode($result->row['data'], true);
-            $result['code'] = $result->row['module_code'];
-            return $result;
+            $json_data = json_decode($result->row['data'], true);
+            if(!isset($json_data['code'])) {
+                $json_data['code'] = $module_code; // Добавляем код модуля
+            }
+            return $json_data;
         }
 
         return null;
@@ -1241,7 +1274,6 @@ public function saveModuleToDatabase($module_code, $version, $data) {
         $file = constant('DIR_SYSTEM') . 'modules/gdt_updater/opencart-module.json';
         if (file_exists($file)) {
             $json = file_get_contents($file);
-            var_dump($json);
             if ($json !== false) {
                 $data = json_decode($json, true);
                 if (json_last_error() === JSON_ERROR_NONE) {        

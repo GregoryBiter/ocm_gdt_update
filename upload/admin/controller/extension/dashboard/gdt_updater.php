@@ -126,15 +126,7 @@ class ControllerExtensionDashboardGdtUpdater extends Controller {
             $server_url = $this->config->get('module_gdt_updater_server');
             
             if (empty($server_url)) {
-                // Проверяем переменную окружения для Docker
-                $docker_server_url = getenv('GDT_UPDATE_SERVER');
-                if ($docker_server_url) {
-                    $server_url = $docker_server_url;
-                } elseif (defined('HTTP_SERVER')) {
-                    $server_url = HTTP_SERVER . 'ocm_gdt_update/server';
-                } else {
-                    $server_url = 'https://example.com/server';
-                }
+               throw new \Exception('Не настроен сервер обновлений');
             }
             
             if (empty($server_url)) {
