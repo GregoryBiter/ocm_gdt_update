@@ -71,7 +71,13 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $data['user_token'] = $this->session->data['user_token'];
 
         // Получаем данные модулей для серверного рендеринга
-        $data['modules'] = $this->getModulesData();
+        try {
+            $data['modules'] = $this->getModulesData();
+        } catch (\Exception $e) {
+            $this->log->write('GDT Updater error: ' . $e->getMessage());
+            $data['error'] = $this->language->get('error_server');
+            $data['modules'] = array();
+        }
 
         $data['header'] = $this->load->controller('common/header');
         $data['column_left'] = $this->load->controller('common/column_left');
@@ -599,7 +605,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         //получаем json 
         $gdt_updater_json = $this->manager->getJson('gdt_updater');
         if ($gdt_updater_json) {
-        $this->$manager->saveModuleToDatabase(
+        $this->manager->saveModuleToDatabase(
             'gdt_updater', 
             $gdt_updater_json['version'] ?? '1.0.0', 
             $gdt_updater_json

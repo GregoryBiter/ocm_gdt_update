@@ -3,7 +3,7 @@
     "creator_name": "gregorybiter",
     "creator_email": "gregorybiter@gmail.com",
     "code": "gdt_updater",
-    "version": "0.0.4",
+    "version": "0.0.5",
     "description": "OpenCart module update system with server and client components",
     "provider": "provider/module/gdt_updater/boot",
     "controller": "extension/module/gdt_updater",
