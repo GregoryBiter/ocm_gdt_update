@@ -98,7 +98,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $server_url = $this->config->get('module_gdt_updater_server');
 
         if (empty($server_url)) {
-            throw new \Exception('Server URL is not configured. Please set it in module settings.');
+            //throw new \Exception('Server URL is not configured. Please set it in module settings.');
         }
 
         foreach ($installed_modules as $module) {
