@@ -104,7 +104,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $server_url = $this->config->get('module_gdt_updater_server');
 
         if (empty($server_url)) {
-            throw new \Exception('Server URL is not configured. Please set it in module settings.');
+            //throw new \Exception('Server URL is not configured. Please set it in module settings.');
         }
 
         foreach ($installed_modules as $module) {
@@ -151,8 +151,9 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                 }
             }
 
-            // Получаем настройки автообновления (можно добавить в конфиг)
-            $module_data['auto_update'] = $this->config->get('module_gdt_updater_auto_' . $module['code']) ? true : false;
+            // Получаем настройки автообновления из массива
+            $auto_update_modules = $this->config->get('module_gdt_updater_auto_modules') ?: array();
+            $module_data['auto_update'] = in_array($module['code'], $auto_update_modules);
 
             $modules[] = $module_data;
         }
@@ -172,6 +173,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $json['module_gdt_updater_server'] = $this->config->get('module_gdt_updater_server');
         $json['module_gdt_updater_api_key'] = $this->config->get('module_gdt_updater_api_key');
         $json['module_gdt_updater_status'] = $this->config->get('module_gdt_updater_status');
+        $json['module_gdt_updater_auto_modules'] = $this->config->get('module_gdt_updater_auto_modules') ?: array();
 
         $this->response->addHeader('Content-Type: application/json');
         $this->response->setOutput(json_encode($json));
@@ -449,6 +451,26 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         return !$this->error;
     }
 
+    /**
+     * Сохранение настроек с сохранением существующих значений
+     */
+    private function saveModuleSettings($new_settings = array())
+    {
+        // Получаем все текущие настройки модуля
+        $current_settings = array();
+        $current_settings['module_gdt_updater_server'] = $this->config->get('module_gdt_updater_server') ?: '';
+        $current_settings['module_gdt_updater_api_key'] = $this->config->get('module_gdt_updater_api_key') ?: '';
+        $current_settings['module_gdt_updater_status'] = $this->config->get('module_gdt_updater_status') ?: 0;
+        $current_settings['module_gdt_updater_auto_modules'] = $this->config->get('module_gdt_updater_auto_modules') ?: array();
+        
+        // Объединяем с новыми настройками
+        $final_settings = array_merge($current_settings, $new_settings);
+        
+        // Сохраняем
+        $this->load->model('setting/setting');
+        $this->model_setting_setting->editSetting('module_gdt_updater', $final_settings);
+    }
+
 
     /**
      * Переключение автообновления для модуля
@@ -464,11 +486,67 @@ class ControllerExtensionModuleGdtUpdater extends Controller
             $module_code = $this->request->post['module_code'];
             $auto_update = isset($this->request->post['auto_update']) ? (int) $this->request->post['auto_update'] : 0;
 
-            // Сохраняем настройку автообновления для конкретного модуля
-            $setting_key = 'module_gdt_updater_auto_' . $module_code;
-            $this->model_setting_setting->editSetting('module_gdt_updater', array($setting_key => $auto_update));
+            // Получаем текущий массив модулей с автообновлением
+            $auto_update_modules = $this->config->get('module_gdt_updater_auto_modules') ?: array();
+
+            if ($auto_update) {
+                // Добавляем модуль в массив автообновления (если еще нет)
+                if (!in_array($module_code, $auto_update_modules)) {
+                    $auto_update_modules[] = $module_code;
+                }
+            } else {
+                // Удаляем модуль из массива автообновления
+                $auto_update_modules = array_diff($auto_update_modules, array($module_code));
+                $auto_update_modules = array_values($auto_update_modules); // Переиндексируем массив
+            }
+
+            // Сохраняем обновленный массив, сохраняя остальные настройки
+            $this->saveModuleSettings(array('module_gdt_updater_auto_modules' => $auto_update_modules));
 
             $json['success'] = 'Настройки автообновления сохранены';
+        } else {
+            $json['error'] = 'Неверные параметры запроса';
+        }
+
+        $this->response->addHeader('Content-Type: application/json');
+        $this->response->setOutput(json_encode($json));
+    }
+
+    /**
+     * Массовое переключение автообновления для модулей
+     */
+    public function toggleMultipleAutoUpdate()
+    {
+        $this->load->language('extension/module/gdt_updater');
+        $this->load->model('setting/setting');
+
+        $json = array();
+
+        if (($this->request->server['REQUEST_METHOD'] == 'POST') && isset($this->request->post['modules']) && is_array($this->request->post['modules'])) {
+            $module_codes = $this->request->post['modules'];
+            $auto_update = isset($this->request->post['auto_update']) ? (int) $this->request->post['auto_update'] : 0;
+
+            // Получаем текущий массив модулей с автообновлением
+            $auto_update_modules = $this->config->get('module_gdt_updater_auto_modules') ?: array();
+
+            if ($auto_update) {
+                // Добавляем модули в массив автообновления
+                foreach ($module_codes as $module_code) {
+                    if (!in_array($module_code, $auto_update_modules)) {
+                        $auto_update_modules[] = $module_code;
+                    }
+                }
+            } else {
+                // Удаляем модули из массива автообновления
+                $auto_update_modules = array_diff($auto_update_modules, $module_codes);
+                $auto_update_modules = array_values($auto_update_modules); // Переиндексируем массив
+            }
+
+            // Сохраняем обновленный массив, сохраняя остальные настройки
+            $this->saveModuleSettings(array('module_gdt_updater_auto_modules' => $auto_update_modules));
+
+            $action = $auto_update ? 'включено' : 'выключено';
+            $json['success'] = sprintf('Автообновление %s для %d модулей', $action, count($module_codes));
         } else {
             $json['error'] = 'Неверные параметры запроса';
         }
@@ -601,7 +679,9 @@ class ControllerExtensionModuleGdtUpdater extends Controller
 
         // Добавляем события
         $this->load->model('setting/event');
+        $this->model_setting_event->addEvent('gdt_updater_auto_check', 'admin/controller/common/dashboard/before', 'extension/module/gdt_updater/autoCheckEvent');
         $this->model_setting_event->addEvent('auto_update_menu', 'admin/view/common/column_left/before', 'extension/module/gdt_updater/menuAdmin');
+        
         //получаем json 
         $gdt_updater_json = $this->manager->getJson('gdt_updater');
         if ($gdt_updater_json) {
@@ -619,7 +699,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
     public function uninstall()
     {
         $this->load->model('setting/event');
-        $this->model_setting_event->deleteEventByCode('auto_update_check');
+        $this->model_setting_event->deleteEventByCode('gdt_updater_auto_check');
         $this->model_setting_event->deleteEventByCode('auto_update_menu');
 
         $this->load->model('setting/setting');
@@ -631,6 +711,9 @@ class ControllerExtensionModuleGdtUpdater extends Controller
 
         // Удаляем настройки Dashboard модуля
         $this->model_setting_setting->deleteSetting('dashboard_gdt_updater');
+
+        // Очищаем массив автообновления
+        $this->saveModuleSettings(array('module_gdt_updater_auto_modules' => array()));
 
         // Переставляем все остальные dashboard модули с sort_order > 1 на одну позицию вверх
         // $this->db->query("UPDATE " . DB_PREFIX . "setting 
@@ -709,6 +792,18 @@ class ControllerExtensionModuleGdtUpdater extends Controller
             }
         }
    
+    }
+
+    /**
+     * Событие автопроверки обновлений при загрузке dashboard
+     */
+    public function autoCheckEvent($route, &$data, &$output)
+    {
+        // Загружаем модель автообновления
+        $this->load->model('extension/module/gdt_update');
+        
+        // Запускаем автопроверку и обновление
+        $this->model_extension_module_gdt_update->autoCheckUpdate();
     }
 
 

@@ -20,6 +20,7 @@
         "admin/language/uk-ua/extension/dashboard/gdt_updater.php",
         "admin/language/uk-ua/extension/module/gdt_install_modules.php",
         "admin/language/uk-ua/extension/module/gdt_updater.php",
+        "admin/model/extension/module/gdt_updater.php",
         "admin/view/template/extension/dashboard/gdt_updater.twig",
         "admin/view/template/extension/dashboard/gdt_updater_form.twig",
         "admin/view/template/extension/dashboard/gdt_updater_info.twig",
@@ -27,6 +28,7 @@
         "admin/view/template/extension/module/gdt_updater.twig",
         "admin/view/template/extension/module/gdt_updater_layout.twig",
         "admin/view/template/extension/module/gdt_updaterr.twig",
+        "system/gdt_update.ocmod.xml",
         "system/library/gbitstudio/modules/manager.php",
         "system/library/gbitstudio/modules/tools.php",
         "system/modules/gdt_updater/opencart-module.json"
