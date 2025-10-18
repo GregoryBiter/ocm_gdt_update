@@ -359,6 +359,16 @@
     cursor: not-allowed;
 }
 
+.install-btn.update-available {
+    background: #ffc107;
+    color: #333;
+}
+
+.install-btn.update-available:hover {
+    background: #e0a800;
+    color: #333;
+}
+
 .module-links {
     display: flex;
     gap: 10px;
@@ -639,11 +649,22 @@ function renderModules(modules, category) {
             
             html += '<div class="module-actions">';
             
-            if (module.is_installed) {
-                html += '<button class="install-btn installed" disabled>';
-                html += '<i class="fa fa-check"></i> Установлен';
-                html += '</button>';
+            // Проверяем статус установки модуля
+            if (module.installed) {
+                // Модуль установлен
+                if (module.update_available) {
+                    // Доступно обновление
+                    html += '<button class="install-btn update-available" data-code="' + (module.code || '') + '" data-url="' + (module.download_url || '') + '">';
+                    html += '<i class="fa fa-refresh"></i> Обновить до v' + (module.version || '');
+                    html += '</button>';
+                } else {
+                    // Установлена актуальная версия
+                    html += '<button class="install-btn installed" disabled>';
+                    html += '<i class="fa fa-check"></i> Установлен v' + (module.installed_version || '');
+                    html += '</button>';
+                }
             } else {
+                // Модуль не установлен
                 html += '<button class="install-btn" data-code="' + (module.code || '') + '" data-url="' + (module.download_url || '') + '">';
                 html += '<i class="fa fa-download"></i> Установить';
                 html += '</button>';
@@ -668,14 +689,16 @@ function renderModules(modules, category) {
     $('#modules-container').html(html);
 }
 
-// Установка модуля
-function installModule(moduleCode, downloadUrl, buttonElement) {
+// Установка/обновление модуля
+function installModule(moduleCode, downloadUrl, buttonElement, isUpdate) {
     if (!moduleCode || !downloadUrl) {
         showAlert('danger', 'Недостаточно данных для установки модуля');
         return;
     }
     
     var originalText = $(buttonElement).html();
+    var actionText = isUpdate ? 'Обновление' : 'Установка';
+    var actionTextLower = isUpdate ? 'обновления' : 'установки';
     
     $.ajax({
         url: ajaxUrls.installModule,
@@ -687,19 +710,19 @@ function installModule(moduleCode, downloadUrl, buttonElement) {
         },
         dataType: 'json',
         beforeSend: function() {
-            $(buttonElement).prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Установка...');
+            $(buttonElement).prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> ' + actionText + '...');
         },
         success: function(json) {
             if (json.success) {
                 showAlert('success', json.success);
-                $(buttonElement).addClass('installed').html('<i class="fa fa-check"></i> Установлен');
+                $(buttonElement).removeClass('update-available').addClass('installed').html('<i class="fa fa-check"></i> Установлен');
             } else if (json.error) {
                 showAlert('danger', json.error);
                 $(buttonElement).prop('disabled', false).html(originalText);
             }
         },
         error: function(xhr, ajaxOptions, thrownError) {
-            showAlert('danger', 'Ошибка установки модуля: ' + thrownError);
+            showAlert('danger', 'Ошибка ' + actionTextLower + ' модуля: ' + thrownError);
             $(buttonElement).prop('disabled', false).html(originalText);
         }
     });
@@ -740,12 +763,13 @@ $(document).ready(function() {
         }
     });
     
-    // Установка модуля
+    // Установка/обновление модуля
     $(document).on('click', '.install-btn:not(.installed)', function(e) {
         e.preventDefault();
         var moduleCode = $(this).data('code');
         var downloadUrl = $(this).data('url');
-        installModule(moduleCode, downloadUrl, this);
+        var isUpdate = $(this).hasClass('update-available');
+        installModule(moduleCode, downloadUrl, this, isUpdate);
     });
 });
 //--></script>

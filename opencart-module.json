@@ -29,8 +29,8 @@
         "admin/view/template/extension/module/gdt_updater_layout.twig",
         "admin/view/template/extension/module/gdt_updaterr.twig",
         "system/gdt_update.ocmod.xml",
+        "system/library/gbitstudio/modules/installer.php",
         "system/library/gbitstudio/modules/manager.php",
-        "system/library/gbitstudio/modules/tools.php",
-        "system/modules/gdt_updater/opencart-module.json"
+        "system/library/gbitstudio/modules/tools.php"
     ]
 }

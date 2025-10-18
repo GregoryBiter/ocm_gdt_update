@@ -188,33 +188,80 @@ class Manager {
      */
     public function checkModuleUpdate($server_url, $module, $client_id = 'default', $api_key = '') {
         $this->log->write('param: '. json_encode([$server_url, $module, $client_id, $api_key], JSON_PRETTY_PRINT));
+        
+        $api_key = $this->getApiKey($api_key);
         $url = rtrim($server_url, '/') . '/index.php?route=gdt_update_server/check';
+        $post_data = $this->prepareCheckUpdateData($module, $api_key);
         
-        // Получаем API ключ из настроек, если не передан
+        $this->logUpdateCheck($module, $api_key);
+        
+        $response_data = $this->executeApiRequest($url, $post_data);
+        
+        if (isset($response_data['error'])) {
+            return $response_data;
+        }
+        
+        return $this->parseUpdateResponse($response_data, $module);
+    }
+    
+    /**
+     * Получает API ключ из параметров или настроек
+     */
+    private function getApiKey($api_key) {
         if (empty($api_key)) {
-            $api_key = $this->registry->get('config')->get('module_gdt_updater_api_key');
+            return $this->registry->get('config')->get('module_gdt_updater_api_key');
         }
-        
-        // Логируем для отладки
-        if (!empty($api_key)) {
-            $this->log->write('GDT Module Manager Debug: API request for module ' . $module['code'] . ' with API key');
-        }
-        $this->log->write('GDT Module Manager Debug: Checking update for module ' . json_encode($module));
-        // Данные в соответствии с серверной авторизацией
+        return $api_key;
+    }
+    
+    /**
+     * Подготавливает данные для проверки обновления
+     */
+    private function prepareCheckUpdateData($module, $api_key) {
         $post_data = array(
             'code' => $module['code'],
             'version' => $module['version']
         );
         
-        // Добавляем API ключ только если он есть
         if (!empty($api_key)) {
             $post_data['api_key'] = $api_key;
         }
         
-        // Инициализация cURL сессии
+        return $post_data;
+    }
+    
+    /**
+     * Логирует информацию о проверке обновления
+     */
+    private function logUpdateCheck($module, $api_key) {
+        if (!empty($api_key)) {
+            $this->log->write('GDT Module Manager Debug: API request for module ' . $module['code'] . ' with API key');
+        }
+        $this->log->write('GDT Module Manager Debug: Checking update for module ' . json_encode($module));
+    }
+    
+    /**
+     * Парсит ответ сервера о наличии обновлений
+     */
+    private function parseUpdateResponse($response_data, $module) {
+        if (isset($response_data['response'])) {
+            $update_info = json_decode($response_data['response'], true);
+            
+            if (isset($update_info['status']) && $update_info['status'] == 'update_available') {
+                return $update_info;
+            }
+        }
+        
+        $this->log->write('GDT Module Manager: No update available for module ' . $module['code']);
+        return false;
+    }
+    
+    /**
+     * Выполняет API запрос к серверу
+     */
+    private function executeApiRequest($url, $post_data, $timeout = 10) {
         $curl = curl_init();
         
-        // Настройка параметров cURL
         curl_setopt_array($curl, array(
             CURLOPT_URL => $url,
             CURLOPT_RETURNTRANSFER => true,
@@ -224,19 +271,18 @@ class Manager {
                 'Content-Type: application/x-www-form-urlencoded',
                 'User-Agent: GDT-ModuleManager/1.0'
             ),
-            CURLOPT_TIMEOUT => 10,
+            CURLOPT_TIMEOUT => $timeout,
             CURLOPT_CONNECTTIMEOUT => 5,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_FAILONERROR => false
         ));
         
-        // Выполнение запроса
         $response = curl_exec($curl);
         $error = curl_error($curl);
         $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        $content_type = curl_getinfo($curl, CURLINFO_CONTENT_TYPE);
         
-        // Закрытие cURL сессии
         curl_close($curl);
         
         if ($error) {
@@ -246,23 +292,14 @@ class Manager {
         
         if ($http_code != 200) {
             $this->log->write('GDT Module Manager HTTP error: ' . $http_code);
-            if ($http_code >= 400) {
-                return array('error' => 'http', 'code' => $http_code);
-            }
+            return array('error' => 'http', 'code' => $http_code);
         }
         
-        if ($response) {
-            $update_info = json_decode($response, true);
-            
-            if (isset($update_info['status']) && $update_info['status'] == 'update_available') {
-                return $update_info;
-            }
-        }
-
-        $this->log->write('GDT Module Manager: No update available for module ' . $module['code']);
-        $this->log->write(json_encode([$error, $http_code, $response], JSON_PRETTY_PRINT));
-        $this->log->write(json_encode([http_build_query($post_data), $$url], JSON_PRETTY_PRINT));
-        return false;
+        return array(
+            'response' => $response,
+            'http_code' => $http_code,
+            'content_type' => $content_type
+        );
     }
     
     /**
@@ -342,181 +379,168 @@ class Manager {
         try {
             $this->log->write('GDT Module Manager: Starting update for module ' . $module['code']);
             
-            // URL для загрузки обновления
+            $api_key = $this->getApiKey($api_key);
             $download_url = rtrim($server_url, '/') . '/index.php?route=gdt_update_server/download';
             
-            // Получаем API ключ из настроек, если не передан
-            if (empty($api_key)) {
-                $api_key = $this->registry->get('config')->get('module_gdt_updater_api_key');
-            }
-            
-            // Логируем для отладки
             $this->log->write('GDT Module Manager: Download URL: ' . $download_url);
             if (!empty($api_key)) {
                 $this->log->write('GDT Module Manager: Using API key for authentication');
             }
             
-            // Данные в соответствии с серверной авторизацией
-            $post_data = array(
-                'code' => $module['code']
-            );
-            
-            // Добавляем API ключ только если он есть
+            // Подготавливаем данные для загрузки
+            $post_data = array('code' => $module['code']);
             if (!empty($api_key)) {
                 $post_data['api_key'] = $api_key;
             }
             
-            // Инициализация cURL сессии
-            $curl = curl_init();
+            // Загружаем модуль с сервера
+            $response_data = $this->executeApiRequest($download_url, $post_data, 300);
             
-            // Настройка параметров cURL
-            curl_setopt_array($curl, array(
-                CURLOPT_URL => $download_url,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => http_build_query($post_data),
-                CURLOPT_HTTPHEADER => array(
-                    'Content-Type: application/x-www-form-urlencoded',
-                    'User-Agent: GDT-ModuleManager/1.0'
-                ),
-                CURLOPT_TIMEOUT => 300,
-                CURLOPT_CONNECTTIMEOUT => 30,
-                CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_SSL_VERIFYHOST => 2,
-                CURLOPT_FAILONERROR => false
-            ));
-            
-            // Выполнение запроса
-            $response = curl_exec($curl);
-            $error = curl_error($curl);
-            $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-            $content_type = curl_getinfo($curl, CURLINFO_CONTENT_TYPE);
-            
-            // Закрытие cURL сессии
-            curl_close($curl);
-            
-            if ($error) {
-                $this->log->write('GDT Module Manager cURL error: ' . $error);
-                return 'Ошибка соединения: ' . $error;
+            // Проверяем ошибки загрузки
+            if (isset($response_data['error'])) {
+                return $this->formatDownloadError($response_data);
             }
             
-            if ($http_code != 200) {
-                $this->log->write('GDT Module Manager HTTP error: ' . $http_code);
-                return 'HTTP ошибка: ' . $http_code;
+            // Валидируем ответ сервера
+            $validation_result = $this->validateDownloadResponse($response_data);
+            if ($validation_result !== true) {
+                return $validation_result;
             }
             
-            if (empty($response)) {
-                $this->log->write('GDT Module Manager: Empty response from server');
-                return 'Пустой ответ от сервера';
+            // Сохраняем загруженный файл
+            $temp_file = $this->saveDownloadedModule($response_data['response'], $module, $update_info);
+            if (!is_string($temp_file)) {
+                return $temp_file;
             }
             
-            // Проверяем, не вернул ли сервер JSON с ошибкой
-            if (strpos($content_type, 'application/json') !== false) {
-                $json_response = json_decode($response, true);
-                if ($json_response && isset($json_response['error'])) {
-                    $this->log->write('GDT Module Manager: Server returned error: ' . $json_response['error']);
-                    return 'Ошибка сервера: ' . $json_response['error'];
-                }
-            }
-            
-            // Проверяем, определена ли константа DIR_DOWNLOAD
-            if (!defined('DIR_DOWNLOAD')) {
-                $download_dir = sys_get_temp_dir() . '/';
-            } else {
-                $download_dir = constant('DIR_DOWNLOAD');
-            }
-            
-            // Временный файл для загрузки
-            $temp_file = $download_dir . 'update_' . $module['code'] . '_' . $update_info['version'] . '.zip';
-            
-            // Сохраняем во временный файл
-            $bytes_written = file_put_contents($temp_file, $response);
-            $this->log->write('GDT Module Manager: Downloaded ' . $bytes_written . ' bytes to ' . $temp_file);
-            
-            if ($bytes_written === false || $bytes_written === 0) {
-                return 'Ошибка при сохранении загруженного файла';
-            }
-            
-            // Проверяем, является ли файл действительным архивом ZIP
-            $zip = new \ZipArchive();
-            $zip_result = $zip->open($temp_file);
-            if ($zip_result !== true) {
+            // Проверяем корректность ZIP архива
+            $zip_validation = $this->validateZipFile($temp_file);
+            if ($zip_validation !== true) {
                 @unlink($temp_file);
-                $this->log->write('GDT Module Manager: Invalid ZIP file, error code: ' . $zip_result);
-                return 'Загруженный файл не является корректным ZIP архивом (код ошибки: ' . $zip_result . ')';
+                return $zip_validation;
             }
-            
-            $this->log->write('GDT Module Manager: ZIP archive contains ' . $zip->numFiles . ' files');
-            $zip->close();
             
             // Выбираем метод установки
             if ($use_opencart_process) {
-                // Используем встроенный процесс установки/обновления OpenCart
-                $this->log->write('GDT Module Manager: Using OpenCart built-in installation process');
-                
-                $result = $this->installViaOpenCartProcess($temp_file, $module['code']);
-                
-                if ($result !== true) {
-                    @unlink($temp_file);
-                    return $result;
-                }
-                
-                // Обновляем информацию о версии в конфигурации модуля
-                $this->updateModuleVersion($module['code'], $update_info['version'], $update_info);
-                
-                $this->log->write('GDT Module Manager: Update completed successfully via OpenCart process for module ' . $module['code']);
-                
-                return true;
+                return $this->installUpdateViaOpenCart($temp_file, $module, $update_info);
             } else {
-                // Используем старый метод установки (прямое копирование файлов)
-                $this->log->write('GDT Module Manager: Using direct file copy method');
+                return $this->installUpdateViaDirectCopy($temp_file, $module, $update_info);
+            }
             
+        } catch (\Exception $e) {
+            $this->log->write('GDT Module Manager: Exception during update: ' . $e->getMessage());
+            return 'Исключение: ' . $e->getMessage();
+        }
+    }
+    
+    /**
+     * Форматирует ошибку загрузки
+     */
+    private function formatDownloadError($response_data) {
+        if ($response_data['error'] === 'curl') {
+            return 'Ошибка соединения: ' . $response_data['message'];
+        }
+        return 'HTTP ошибка: ' . $response_data['code'];
+    }
+    
+    /**
+     * Проверяет корректность ответа при загрузке
+     */
+    private function validateDownloadResponse($response_data) {
+        if (empty($response_data['response'])) {
+            $this->log->write('GDT Module Manager: Empty response from server');
+            return 'Пустой ответ от сервера';
+        }
+        
+        if (isset($response_data['content_type']) && strpos($response_data['content_type'], 'application/json') !== false) {
+            $json_response = json_decode($response_data['response'], true);
+            if ($json_response && isset($json_response['error'])) {
+                $this->log->write('GDT Module Manager: Server returned error: ' . $json_response['error']);
+                return 'Ошибка сервера: ' . $json_response['error'];
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Сохраняет загруженный модуль во временный файл
+     */
+    private function saveDownloadedModule($response, $module, $update_info) {
+        $download_dir = defined('DIR_DOWNLOAD') ? constant('DIR_DOWNLOAD') : sys_get_temp_dir() . '/';
+        $temp_file = $download_dir . 'update_' . $module['code'] . '_' . $update_info['version'] . '.zip';
+        
+        $bytes_written = file_put_contents($temp_file, $response);
+        $this->log->write('GDT Module Manager: Downloaded ' . $bytes_written . ' bytes to ' . $temp_file);
+        
+        if ($bytes_written === false || $bytes_written === 0) {
+            return 'Ошибка при сохранении загруженного файла';
+        }
+        
+        return $temp_file;
+    }
+    
+    /**
+     * Проверяет корректность ZIP файла
+     */
+    private function validateZipFile($temp_file) {
+        $zip = new \ZipArchive();
+        $zip_result = $zip->open($temp_file);
+        
+        if ($zip_result !== true) {
+            $this->log->write('GDT Module Manager: Invalid ZIP file, error code: ' . $zip_result);
+            return 'Загруженный файл не является корректным ZIP архивом (код ошибки: ' . $zip_result . ')';
+        }
+        
+        $this->log->write('GDT Module Manager: ZIP archive contains ' . $zip->numFiles . ' files');
+        $zip->close();
+        
+        return true;
+    }
+    
+    /**
+     * Устанавливает обновление через встроенный процесс OpenCart
+     */
+    private function installUpdateViaOpenCart($temp_file, $module, $update_info) {
+        $this->log->write('GDT Module Manager: Using OpenCart built-in installation process');
+        
+        $result = $this->installViaOpenCartProcess($temp_file, $module['code']);
+        
+        if ($result !== true) {
+            @unlink($temp_file);
+            return $result;
+        }
+        
+        // Обновляем информацию о версии в конфигурации модуля
+        $this->updateModuleVersion($module['code'], $update_info['version'], $update_info);
+        
+        $this->log->write('GDT Module Manager: Update completed successfully via OpenCart process for module ' . $module['code']);
+        
+        return true;
+    }
+    
+    /**
+     * Устанавливает обновление через прямое копирование файлов
+     */
+    private function installUpdateViaDirectCopy($temp_file, $module, $update_info) {
+        $this->log->write('GDT Module Manager: Using direct file copy method');
+        
+        $download_dir = defined('DIR_DOWNLOAD') ? constant('DIR_DOWNLOAD') : sys_get_temp_dir() . '/';
+        $extract_dir = $download_dir . 'update_extract_' . $module['code'];
+        
+        try {
             // Извлекаем архив
-            $extract_dir = $download_dir . 'update_extract_' . $module['code'];
-            
-            // Очистим директорию, если она уже существует
-            if (is_dir($extract_dir)) {
-                $this->removeDirectory($extract_dir);
-            }
-            
-            // Создаем директорию заново
-            if (!mkdir($extract_dir, 0777, true)) {
-                $zip->close();
+            $extract_result = $this->extractModuleArchive($temp_file, $extract_dir);
+            if ($extract_result !== true) {
                 @unlink($temp_file);
-                return 'Не удалось создать временную директорию для извлечения';
+                return $extract_result;
             }
             
-            $extracted = $zip->extractTo($extract_dir);
-            $zip->close();
+            // Определяем исходную директорию
+            $source_dir = $this->determineSourceDirectory($extract_dir);
             
-            if (!$extracted) {
-                $this->removeDirectory($extract_dir);
-                @unlink($temp_file);
-                return 'Ошибка при извлечении архива';
-            }
-            
-            $this->log->write('GDT Module Manager: Files extracted to ' . $extract_dir);
-            
-            // Проверяем структуру архива и определяем исходную директорию
-            $source_dir = $extract_dir;
-            
-            // Если архив имеет структуру OpenCart с папкой upload
-            if (is_dir($extract_dir . '/upload')) {
-                $source_dir = $extract_dir . '/upload';
-                $this->log->write('GDT Module Manager: Using upload subdirectory: ' . $source_dir);
-            }
-            
-            // Проверяем, определена ли константа DIR_APPLICATION
-            if (!defined('DIR_APPLICATION')) {
-                $this->removeDirectory($extract_dir);
-                @unlink($temp_file);
-                return 'Константа DIR_APPLICATION не определена';
-            }
-            
-            // Применяем обновление - копируем файлы в нужные директории
-            // получаем путь к директории OpenCart
-            $opencart_dir = realpath(constant('DIR_APPLICATION') . '../');
-            
+            // Получаем корневую директорию OpenCart
+            $opencart_dir = $this->getOpenCartDirectory();
             if (!$opencart_dir) {
                 $this->removeDirectory($extract_dir);
                 @unlink($temp_file);
@@ -525,7 +549,7 @@ class Manager {
             
             $this->log->write('GDT Module Manager: Copying files from ' . $source_dir . ' to ' . $opencart_dir);
             
-            // Создаем резервную копию перед обновлением
+            // Создаем резервную копию
             $backup_created = $this->createBackup($module);
             if ($backup_created) {
                 $this->log->write('GDT Module Manager: Backup created successfully');
@@ -534,9 +558,8 @@ class Manager {
             // Копируем файлы модуля
             $this->copyDirectory($source_dir, $opencart_dir);
             
-            // Обрабатываем файл конфигурации opencart-module.json
+            // Обрабатываем файл конфигурации
             $config_updated = $this->handleModuleConfig($extract_dir, $module, $update_info);
-            
             if (!$config_updated) {
                 $this->log->write('GDT Module Manager: Warning - could not update version in module config');
             }
@@ -548,12 +571,61 @@ class Manager {
             $this->log->write('GDT Module Manager: Update completed successfully for module ' . $module['code']);
             
             return true;
-            } // Закрываем блок else
             
         } catch (\Exception $e) {
-            $this->log->write('GDT Module Manager: Exception during update: ' . $e->getMessage());
-            return 'Исключение: ' . $e->getMessage();
+            if (is_dir($extract_dir)) {
+                $this->removeDirectory($extract_dir);
+            }
+            @unlink($temp_file);
+            throw $e;
         }
+    }
+    
+    /**
+     * Извлекает архив модуля
+     */
+    private function extractModuleArchive($temp_file, $extract_dir) {
+        if (is_dir($extract_dir)) {
+            $this->removeDirectory($extract_dir);
+        }
+        
+        if (!mkdir($extract_dir, 0777, true)) {
+            return 'Не удалось создать временную директорию для извлечения';
+        }
+        
+        $zip = new \ZipArchive();
+        $zip->open($temp_file);
+        $extracted = $zip->extractTo($extract_dir);
+        $zip->close();
+        
+        if (!$extracted) {
+            $this->removeDirectory($extract_dir);
+            return 'Ошибка при извлечении архива';
+        }
+        
+        $this->log->write('GDT Module Manager: Files extracted to ' . $extract_dir);
+        return true;
+    }
+    
+    /**
+     * Определяет исходную директорию в архиве
+     */
+    private function determineSourceDirectory($extract_dir) {
+        if (is_dir($extract_dir . '/upload')) {
+            $this->log->write('GDT Module Manager: Using upload subdirectory');
+            return $extract_dir . '/upload';
+        }
+        return $extract_dir;
+    }
+    
+    /**
+     * Получает корневую директорию OpenCart
+     */
+    private function getOpenCartDirectory() {
+        if (!defined('DIR_APPLICATION')) {
+            return false;
+        }
+        return realpath(constant('DIR_APPLICATION') . '../');
     }
     
     /**

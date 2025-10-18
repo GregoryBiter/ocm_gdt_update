@@ -188,6 +188,9 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
             
             $modules = $manager->getModulesFromServer($server_url, array('featured' => 1));
             
+            // Добавляем информацию об установленных модулях
+            $modules = $this->markInstalledModules($modules, $manager);
+            
             $json = array(
                 'success' => true,
                 'modules' => $modules
@@ -219,6 +222,9 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
             
             $modules = $manager->getModulesFromServer($server_url, array('popular' => 1));
             
+            // Добавляем информацию об установленных модулях
+            $modules = $this->markInstalledModules($modules, $manager);
+            
             $json = array(
                 'success' => true,
                 'modules' => $modules
@@ -249,6 +255,9 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
             $manager = new \Gbitstudio\Modules\Manager($this->registry);
             
             $modules = $manager->getModulesFromServer($server_url, array('newest' => 1));
+            
+            // Добавляем информацию об установленных модулях
+            $modules = $this->markInstalledModules($modules, $manager);
             
             $json = array(
                 'success' => true,
@@ -298,6 +307,9 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
                 
                 $modules = $manager->getModulesFromServer($server_url, $params);
                 
+                // Добавляем информацию об установленных модулях
+                $modules = $this->markInstalledModules($modules, $manager);
+                
                 $json = array(
                     'success' => true,
                     'modules' => $modules
@@ -319,6 +331,11 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
     public function getStoreModules() {
         try {
             $modules = $this->getModulesFromExternalApi();
+            
+            // Добавляем информацию об установленных модулях
+            $this->load->library('gbitstudio/modules/manager');
+            $manager = new \Gbitstudio\Modules\Manager($this->registry);
+            $modules = $this->markInstalledModules($modules, $manager);
             
             $json = array(
                 'success' => true,
@@ -349,6 +366,11 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
         } else {
             try {
                 $modules = $this->searchModulesInExternalApi($query, $category, $featured);
+                
+                // Добавляем информацию об установленных модулях
+                $this->load->library('gbitstudio/modules/manager');
+                $manager = new \Gbitstudio\Modules\Manager($this->registry);
+                $modules = $this->markInstalledModules($modules, $manager);
                 
                 $json = array(
                     'success' => true,
@@ -511,5 +533,49 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
         
         $this->response->addHeader('Content-Type: application/json');
         $this->response->setOutput(json_encode($json));
+    }
+    
+    /**
+     * Помечает установленные модули в списке
+     * 
+     * @param array $modules Список модулей с сервера
+     * @param object $manager Менеджер модулей
+     * @return array Модули с флагом installed
+     */
+    private function markInstalledModules($modules, $manager) {
+        // Получаем список установленных модулей
+        $installed_modules = $manager->getInstalledModules();
+        
+        // Создаем карту установленных модулей для быстрого поиска
+        $installed_map = array();
+        foreach ($installed_modules as $installed) {
+            if (isset($installed['code'])) {
+                $installed_map[$installed['code']] = array(
+                    'version' => isset($installed['version']) ? $installed['version'] : '0.0.0',
+                    'name' => isset($installed['name']) ? $installed['name'] : $installed['code']
+                );
+            }
+        }
+        
+        // Добавляем флаг installed к каждому модулю
+        foreach ($modules as &$module) {
+            if (isset($module['code']) && isset($installed_map[$module['code']])) {
+                $module['installed'] = true;
+                $module['installed_version'] = $installed_map[$module['code']]['version'];
+                
+                // Проверяем, доступно ли обновление
+                if (isset($module['version'])) {
+                    $module['update_available'] = version_compare($module['version'], $installed_map[$module['code']]['version'], '>');
+                } else {
+                    $module['update_available'] = false;
+                }
+            } else {
+                $module['installed'] = false;
+                $module['installed_version'] = null;
+                $module['update_available'] = false;
+            }
+        }
+        
+        return $modules;
     }
 }

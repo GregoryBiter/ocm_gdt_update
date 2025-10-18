@@ -5,109 +5,145 @@ class ModelExtensionModuleGdtUpdater extends Model {
      * Автоматическая проверка и запуск обновления модулей при загрузке dashboard
      */
     public function autoCheckUpdate() {
-        // Логируем вызов метода
         $this->log->write('GDT Updater Auto: autoCheckUpdate method called');
-        var_dump('GDT Updater: AutoCheck executed');
         
-        // Проверяем, запускали ли уже сегодня (кеширование)
-        // $last_check = $this->cache->get('gdt_updater_last_auto_check');
-        // if ($last_check == date('Y-m-d')) {
-        //     $this->log->write('GDT Updater Auto: Already checked today, skipping');
-        //     return;
-        // }
-
-        // Загружаем менеджер модулей
-        $this->load->library('gbitstudio/modules/manager');
-        $manager = new \Gbitstudio\Modules\Manager($this->registry);
-
-        // Получаем список установленных модулей
-        $installed_modules = $manager->getInstalledModules();
-        
-        if (empty($installed_modules)) {
-            $this->log->write('GDT Updater Auto: No installed modules found');
+        $manager = $this->initializeManager();
+        if (!$manager) {
             return;
         }
 
-        // Получаем URL сервера обновлений
-        $server_url = $this->config->get('module_gdt_updater_server');
-        if (empty($server_url)) {
-            // Проверяем наличие переменной окружения для Docker
-            $docker_server_url = getenv('GDT_UPDATE_SERVER');
-            if ($docker_server_url) {
-                $server_url = $docker_server_url;
-            }
-            // Если переменной окружения нет, используем HTTP_SERVER
-            elseif (defined('HTTP_SERVER')) {
-                $server_url = HTTP_SERVER . 'ocm_gdt_update/server';
-            }
+        $installed_modules = $this->getInstalledModulesForAutoUpdate($manager);
+        if (empty($installed_modules)) {
+            return;
         }
 
+        $server_url = $this->getServerUrl();
         if (empty($server_url)) {
             $this->log->write('GDT Updater Auto: No server URL configured');
-            return; // Нет настроенного сервера обновлений
+            return;
         }
 
         $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
-        $updated_modules = array();
-        $errors = array();
-
-        // Получаем массив модулей с включенным автообновлением
         $auto_update_modules = $this->config->get('module_gdt_updater_auto_modules') ?: array();
         
         $this->log->write('GDT Updater Auto: Auto-update enabled for modules: ' . implode(', ', $auto_update_modules));
 
-        var_dump($auto_update_modules);
+        $result = $this->processAutoUpdates($manager, $installed_modules, $auto_update_modules, $server_url, $api_key);
+        
+        $this->handleAutoUpdateResults($result, $manager);
+        $this->cache->set('gdt_updater_last_auto_check', date('Y-m-d'));
+    }
+    
+    /**
+     * Инициализирует менеджер модулей
+     */
+    private function initializeManager() {
+        $this->load->library('gbitstudio/modules/manager');
+        return new \Gbitstudio\Modules\Manager($this->registry);
+    }
+    
+    /**
+     * Получает список установленных модулей для автообновления
+     */
+    private function getInstalledModulesForAutoUpdate($manager) {
+        $installed_modules = $manager->getInstalledModules();
+        
+        if (empty($installed_modules)) {
+            $this->log->write('GDT Updater Auto: No installed modules found');
+        }
+        
+        return $installed_modules;
+    }
+    
+    /**
+     * Получает URL сервера обновлений
+     */
+    private function getServerUrl() {
+        $server_url = $this->config->get('module_gdt_updater_server');
+        
+        if (empty($server_url)) {
+            $docker_server_url = getenv('GDT_UPDATE_SERVER');
+            if ($docker_server_url) {
+                return $docker_server_url;
+            }
+            
+            if (defined('HTTP_SERVER')) {
+                return HTTP_SERVER . 'ocm_gdt_update/server';
+            }
+        }
+        
+        return $server_url;
+    }
+    
+    /**
+     * Обрабатывает автообновления для модулей
+     */
+    private function processAutoUpdates($manager, $installed_modules, $auto_update_modules, $server_url, $api_key) {
+        $updated_modules = array();
+        $errors = array();
 
         foreach ($installed_modules as $module) {
-            // Проверяем, включено ли автообновление для этого модуля
             if (!in_array($module['code'], $auto_update_modules)) {
-                continue; // Пропускаем модули без автообновления
+                continue;
             }
 
-            $this->log->write('GDT Updater Auto: Checking module ' . $module['code'] . ' for updates');
-
-            try {
-                // Проверяем наличие обновлений
-                $update_info = $manager->checkModuleUpdate($server_url, $module, '', $api_key);
-                
-                if ($update_info && !isset($update_info['error'])) {
-                    // Логируем начало автообновления
-                    $this->log->write('GDT Updater Auto: Starting auto-update for module ' . $module['code'] . ' from version ' . $module['version'] . ' to ' . $update_info['version']);
-                    
-                    // Выполняем обновление через встроенный процесс OpenCart
-                    $result = $manager->downloadAndInstallUpdate($server_url, $module, $update_info, '', $api_key, true);
-                    
-                    if ($result === true) {
-                        $updated_modules[] = $module['module_name'] ?? $module['name'] ?? $module['code'];
-                        $this->log->write('GDT Updater Auto: Successfully auto-updated module ' . $module['code'] . ' to version ' . $update_info['version'] . ' via OpenCart process');
-                    } else {
-                        $errors[] = $module['code'] . ': ' . $result;
-                        $this->log->write('GDT Updater Auto Error: Failed to auto-update module ' . $module['code'] . ' - ' . $result);
-                    }
-                }
-            } catch (Exception $e) {
-                $errors[] = $module['code'] . ': ' . $e->getMessage();
-                $this->log->write('GDT Updater Auto Exception: ' . $e->getMessage());
-            }
-        }
-
-        // Очищаем кэш после всех обновлений
-        if (!empty($updated_modules)) {
-            $manager->clearCache();
+            $update_result = $this->tryAutoUpdateModule($manager, $module, $server_url, $api_key);
             
-            // Создаем уведомление об успешных автообновлениях
-            $success_message = 'Автообновлены модули: ' . implode(', ', $updated_modules);
-            $this->session->data['success'] = $success_message;
+            if ($update_result['success']) {
+                $updated_modules[] = $module['module_name'] ?? $module['name'] ?? $module['code'];
+            } elseif ($update_result['error']) {
+                $errors[] = $module['code'] . ': ' . $update_result['error'];
+            }
         }
 
-        // Создаем уведомление об ошибках (если есть)
-        if (!empty($errors)) {
-            $error_message = 'Ошибки автообновления: ' . implode('; ', $errors);
-            $this->session->data['warning'] = $error_message;
+        return array(
+            'updated' => $updated_modules,
+            'errors' => $errors
+        );
+    }
+    
+    /**
+     * Пытается выполнить автообновление модуля
+     */
+    private function tryAutoUpdateModule($manager, $module, $server_url, $api_key) {
+        try {
+            $update_info = $manager->checkModuleUpdate($server_url, $module, '', $api_key);
+            
+            if (!$update_info || isset($update_info['error'])) {
+                return array('success' => false, 'error' => null);
+            }
+            
+            $this->log->write('GDT Updater Auto: Starting auto-update for module ' . $module['code'] . 
+                ' from version ' . $module['version'] . ' to ' . $update_info['version']);
+            
+            $result = $manager->downloadAndInstallUpdate($server_url, $module, $update_info, '', $api_key, true);
+            
+            if ($result === true) {
+                $this->log->write('GDT Updater Auto: Successfully auto-updated module ' . $module['code'] . 
+                    ' to version ' . $update_info['version'] . ' via OpenCart process');
+                return array('success' => true, 'error' => null);
+            } else {
+                $this->log->write('GDT Updater Auto Error: Failed to auto-update module ' . $module['code'] . ' - ' . $result);
+                return array('success' => false, 'error' => $result);
+            }
+        } catch (Exception $e) {
+            $this->log->write('GDT Updater Auto Exception: ' . $e->getMessage());
+            return array('success' => false, 'error' => $e->getMessage());
+        }
+    }
+    
+    /**
+     * Обрабатывает результаты автообновления
+     */
+    private function handleAutoUpdateResults($result, $manager) {
+        if (!empty($result['updated'])) {
+            $manager->clearCache();
+            $this->session->data['success'] = 'Автообновлены модули: ' . implode(', ', $result['updated']);
         }
 
-        // Кэшируем дату последней проверки
-        $this->cache->set('gdt_updater_last_auto_check', date('Y-m-d'));
+        if (!empty($result['errors'])) {
+            $this->session->data['warning'] = 'Ошибки автообновления: ' . implode('; ', $result['errors']);
+        }
     }
 
     /**

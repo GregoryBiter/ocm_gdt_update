@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <modification>
-    <name>GDT Updater AutoCheck</name>
-    <code>gdt_updater_autocheck</code>
-    <version>1.0</version>
+    <name>GDT Updater</name>
+    <code>gdt_updater</code>
+    <version>0.0.6</version>
     <author>gregorybiter</author>
     <link>mailto:gregorybiter@gmail.com</link>
     <file path="admin/controller/common/dashboard.php">
@@ -10,12 +10,8 @@
             <search><![CDATA[public function index() {]]></search>
             <add position="after"><![CDATA[
                 // GDT Updater: авто-проверка обновлений
-
-                    $this->load->model('extension/module/gdt_updater');
-                        $this->model_extension_module_gdt_updater->autoCheckUpdate();
-                        
-           
-                
+                $this->load->model('extension/module/gdt_updater');
+                $this->model_extension_module_gdt_updater->autoCheckUpdate();
             ]]></add>
         </operation>
     </file>
