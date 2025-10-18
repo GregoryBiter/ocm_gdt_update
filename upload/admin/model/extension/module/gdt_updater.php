@@ -74,12 +74,12 @@ class ModelExtensionModuleGdtUpdater extends Model {
                     // Логируем начало автообновления
                     $this->log->write('GDT Updater Auto: Starting auto-update for module ' . $module['code'] . ' from version ' . $module['version'] . ' to ' . $update_info['version']);
                     
-                    // Выполняем обновление
-                    $result = $manager->downloadAndInstallUpdate($server_url, $module, $update_info, '', $api_key);
+                    // Выполняем обновление через встроенный процесс OpenCart
+                    $result = $manager->downloadAndInstallUpdate($server_url, $module, $update_info, '', $api_key, true);
                     
                     if ($result === true) {
                         $updated_modules[] = $module['module_name'] ?? $module['name'] ?? $module['code'];
-                        $this->log->write('GDT Updater Auto: Successfully auto-updated module ' . $module['code'] . ' to version ' . $update_info['version']);
+                        $this->log->write('GDT Updater Auto: Successfully auto-updated module ' . $module['code'] . ' to version ' . $update_info['version'] . ' via OpenCart process');
                     } else {
                         $errors[] = $module['code'] . ': ' . $result;
                         $this->log->write('GDT Updater Auto Error: Failed to auto-update module ' . $module['code'] . ' - ' . $result);
@@ -185,8 +185,8 @@ class ModelExtensionModuleGdtUpdater extends Model {
         }
 
         try {
-            // Выполняем обновление
-            $result = $manager->downloadAndInstallUpdate($server_url, $module, $update_info, '', $api_key);
+            // Выполняем обновление через встроенный процесс OpenCart
+            $result = $manager->downloadAndInstallUpdate($server_url, $module, $update_info, '', $api_key, true);
             
             if ($result === true) {
                 // Очищаем кэш

@@ -25,50 +25,156 @@ class Manager {
     public function __get($name) {
         return $this->registry->get($name);
     }    /**
-     * Получает список установленных модулей из базы данных
+     * Получает список установленных модулей из базы данных, модификаторов OpenCart и системных файлов
      * 
      * @return array
      */
     public function getInstalledModules() {
+        $modules = [];
         $db = $this->registry->get('db');
+        
+        // 1. Получаем модули из собственной таблицы gdt_modules
         $query = "SELECT * FROM `gdt_modules`;";
         $result = $db->query($query);
 
-        $modules = [];
         if ($result->num_rows > 0) {
             foreach ($result->rows as $row) {
-                $row = json_decode($row['data'], true);
-                $modules[] = $row;
+                $module_data = json_decode($row['data'], true);
+                if ($module_data) {
+                    $modules[] = $module_data;
+                }
             }
         }
 
-         // Добавляем сам gdt_updater если его нет в списке
-    $gdt_updater_found = false;
-    foreach ($modules as $module) {
-        if (isset($module['code']) && $module['code'] === 'gdt_updater') {
-            $gdt_updater_found = true;
-            break;
-        }
-    }
+        // 2. Получаем модули из таблицы модификаторов OpenCart
+        $opencart_modules = $this->getModulesFromOpenCartModifications();
+        $modules = array_merge($modules, $opencart_modules);
+        
+        // 3. Получаем модули из системных файлов .ocmod.xml
+        $system_modules = $this->getModulesFromSystemFiles();
+        $modules = array_merge($modules, $system_modules);
 
-    if (!$gdt_updater_found) {
-        $gdt_updater_data = $this->getJson();
-        if ($gdt_updater_data) {
-            $modules[] = $gdt_updater_data;
+        // 4. Добавляем сам gdt_updater если его нет в списке
+        $gdt_updater_found = false;
+        foreach ($modules as $module) {
+            if (isset($module['code']) && $module['code'] === 'gdt_updater') {
+                $gdt_updater_found = true;
+                break;
+            }
         }
-    }
 
-        return $modules;
+        if (!$gdt_updater_found) {
+            $gdt_updater_data = $this->getJson();
+            if ($gdt_updater_data) {
+                $modules[] = $gdt_updater_data;
+            }
+        }
+
+        // 5. Удаляем дубликаты модулей по коду
+        $unique_modules = [];
+        $seen_codes = [];
+        
+        foreach ($modules as $module) {
+            if (isset($module['code']) && !in_array($module['code'], $seen_codes)) {
+                $unique_modules[] = $module;
+                $seen_codes[] = $module['code'];
+            }
+        }
+
+        return $unique_modules;
     }
 
     /**
-     * Получает модуль по коду из базы данных
+     * Получает модуль по коду из всех источников (база данных, модификаторы OpenCart, системные файлы)
      * 
      * @param string $code Код модуля
      * @return array|null
      */
     public function getModuleByCode($code) {
-        return $this->getModuleFromDatabase($code);
+        // Сначала ищем в собственной базе данных
+        $module = $this->getModuleFromDatabase($code);
+        if ($module) {
+            return $module;
+        }
+        
+        // Ищем в модификаторах OpenCart
+        $module = $this->getModuleFromOpenCartModifications($code);
+        if ($module) {
+            return $module;
+        }
+        
+        // Ищем в системных файлах
+        $module = $this->getModuleFromSystemFiles($code);
+        if ($module) {
+            return $module;
+        }
+        
+        return null;
+    }
+
+    /**
+     * Получает модуль по коду из модификаторов OpenCart
+     * 
+     * @param string $code Код модуля
+     * @return array|null
+     */
+    private function getModuleFromOpenCartModifications($code) {
+        $db = $this->registry->get('db');
+        
+        try {
+            // Проверяем существование таблицы модификаторов
+            $table_exists_query = "SHOW TABLES LIKE '" . DB_PREFIX . "modification'";
+            $table_result = $db->query($table_exists_query);
+            
+            if ($table_result->num_rows > 0) {
+                $query = "SELECT * FROM `" . DB_PREFIX . "modification` WHERE `code` = '" . $db->escape($code) . "' AND `status` = 1 LIMIT 1";
+                $result = $db->query($query);
+                
+                if ($result->num_rows > 0) {
+                    $row = $result->row;
+                    return [
+                        'code' => $row['code'],
+                        'name' => $row['name'],
+                        'version' => isset($row['version']) ? $row['version'] : '1.0.0',
+                        'author' => isset($row['author']) ? $row['author'] : 'Unknown',
+                        'link' => isset($row['link']) ? $row['link'] : '',
+                        'description' => isset($row['description']) ? $row['description'] : '',
+                        'source' => 'opencart_modification',
+                        'modification_id' => $row['modification_id'],
+                        'date_added' => isset($row['date_added']) ? $row['date_added'] : '',
+                    ];
+                }
+            }
+        } catch (\Exception $e) {
+            $this->logError('GDT Module Manager: Error getting OpenCart modification by code: ' . $e->getMessage());
+        }
+        
+        return null;
+    }
+
+    /**
+     * Получает модуль по коду из системных файлов
+     * 
+     * @param string $code Код модуля
+     * @return array|null
+     */
+    private function getModuleFromSystemFiles($code) {
+        try {
+            $system_dir = constant('DIR_SYSTEM');
+            $pattern = $system_dir . '*.ocmod.xml';
+            $files = glob($pattern);
+            
+            foreach ($files as $file) {
+                $module_data = $this->parseOcmodFile($file);
+                if ($module_data && $module_data['code'] === $code) {
+                    return $module_data;
+                }
+            }
+        } catch (\Exception $e) {
+            $this->logError('GDT Module Manager: Error getting system module by code: ' . $e->getMessage());
+        }
+        
+        return null;
     }
     
     /**
@@ -160,13 +266,14 @@ class Manager {
     }
     
     /**
-     * Установка модуля по URL
+     * Установка модуля по URL через встроенный процесс OpenCart
      * 
      * @param string $module_code Код модуля
-     * @param string $download_url URL для скачивания
-     * @return bool
+     * @param string $download_url URL для загрузки модуля
+     * @param bool $use_opencart_process Использовать встроенный процесс OpenCart (по умолчанию true)
+     * @return bool|string
      */
-    public function installModuleURL($module_code, $download_url) {
+    public function installModuleURL($module_code, $download_url, $use_opencart_process = true) {
         try {
             $installed_modules = $this->getInstalledModules();
             foreach ($installed_modules as $installed) {
@@ -181,28 +288,42 @@ class Manager {
                 throw new \Exception('Не удалось скачать модуль');
             }
 
-            $temp_dir = (defined('DIR_STORAGE') ? constant('DIR_STORAGE') : sys_get_temp_dir() . '/') . 'upload/gdt_module_' . $module_code . '_' . time();
-            mkdir($temp_dir, 0755, true);
-
             try {
-                $this->extractAndInstallModule($temp_file, $module_code);
-                $this->clearCache();
+                if ($use_opencart_process) {
+                    // Используем встроенный процесс установки OpenCart
+                    $result = $this->installViaOpenCartProcess($temp_file, $module_code);
+                    
+                    if ($result !== true) {
+                        throw new \Exception($result);
+                    }
+                    
+                    $this->clearCache();
+                } else {
+                    // Используем старый метод установки
+                    $temp_dir = (defined('DIR_STORAGE') ? constant('DIR_STORAGE') : sys_get_temp_dir() . '/') . 'upload/gdt_module_' . $module_code . '_' . time();
+                    mkdir($temp_dir, 0755, true);
+                    
+                    $this->extractAndInstallModule($temp_file, $module_code);
+                    $this->clearCache();
+                    
+                    if (is_dir($temp_dir)) {
+                        $this->removeDirectory($temp_dir);
+                    }
+                }
             } catch (\Exception $e) {
                 $this->rollbackChanges();
                 throw $e;
             } finally {
-                if (file_exists($temp_file)) {
+                // Очищаем временный файл только если он не был перемещен процессом OpenCart
+                if (file_exists($temp_file) && !$use_opencart_process) {
                     unlink($temp_file);
-                }
-                if (is_dir($temp_dir)) {
-                    $this->removeDirectory($temp_dir);
                 }
             }
 
             return true;
         } catch (\Exception $e) {
             $this->logError('Ошибка установки модуля: ' . $e->getMessage());
-            throw $e;
+            return $e->getMessage();
         }
     }
     
@@ -214,9 +335,10 @@ class Manager {
      * @param array $update_info Информация об обновлении
      * @param string $client_id Идентификатор клиента
      * @param string $api_key Ключ API для аутентификации
+     * @param bool $use_opencart_process Использовать встроенный процесс OpenCart (по умолчанию true)
      * @return bool|string
      */
-    public function downloadAndInstallUpdate($server_url, $module, $update_info, $client_id = 'default', $api_key = '') {
+    public function downloadAndInstallUpdate($server_url, $module, $update_info, $client_id = 'default', $api_key = '', $use_opencart_process = true) {
         try {
             $this->log->write('GDT Module Manager: Starting update for module ' . $module['code']);
             
@@ -325,6 +447,29 @@ class Manager {
             }
             
             $this->log->write('GDT Module Manager: ZIP archive contains ' . $zip->numFiles . ' files');
+            $zip->close();
+            
+            // Выбираем метод установки
+            if ($use_opencart_process) {
+                // Используем встроенный процесс установки/обновления OpenCart
+                $this->log->write('GDT Module Manager: Using OpenCart built-in installation process');
+                
+                $result = $this->installViaOpenCartProcess($temp_file, $module['code']);
+                
+                if ($result !== true) {
+                    @unlink($temp_file);
+                    return $result;
+                }
+                
+                // Обновляем информацию о версии в конфигурации модуля
+                $this->updateModuleVersion($module['code'], $update_info['version'], $update_info);
+                
+                $this->log->write('GDT Module Manager: Update completed successfully via OpenCart process for module ' . $module['code']);
+                
+                return true;
+            } else {
+                // Используем старый метод установки (прямое копирование файлов)
+                $this->log->write('GDT Module Manager: Using direct file copy method');
             
             // Извлекаем архив
             $extract_dir = $download_dir . 'update_extract_' . $module['code'];
@@ -403,6 +548,8 @@ class Manager {
             $this->log->write('GDT Module Manager: Update completed successfully for module ' . $module['code']);
             
             return true;
+            } // Закрываем блок else
+            
         } catch (\Exception $e) {
             $this->log->write('GDT Module Manager: Exception during update: ' . $e->getMessage());
             return 'Исключение: ' . $e->getMessage();
@@ -848,6 +995,177 @@ class Manager {
     }
     
     /**
+     * Установка модуля через встроенный процесс OpenCart
+     * 
+     * @param string $zip_file_path Путь к ZIP файлу модуля
+     * @param string $module_code Код модуля (опционально)
+     * @return bool|string
+     */
+    public function installViaOpenCartProcess($zip_file_path, $module_code = '') {
+        if ($this->log) {
+            $this->log->write('GDT Module Manager: Starting OpenCart installation process for ' . $module_code);
+            $this->log->write('GDT Module Manager: ZIP file path: ' . $zip_file_path);
+        }
+
+        try {
+            // Проверяем существование файла
+            if (!file_exists($zip_file_path)) {
+                throw new \Exception('Файл модуля не найден: ' . $zip_file_path);
+            }
+
+            // Генерируем уникальный токен для сессии установки
+            $install_token = substr(md5(uniqid(rand(), true)), 0, 10);
+            
+            // Копируем файл в директорию загрузок OpenCart
+            $upload_dir = defined('DIR_UPLOAD') ? constant('DIR_UPLOAD') : (defined('DIR_STORAGE') ? constant('DIR_STORAGE') . 'upload/' : sys_get_temp_dir() . '/');
+            
+            if (!is_dir($upload_dir)) {
+                mkdir($upload_dir, 0755, true);
+            }
+            
+            $target_file = $upload_dir . $install_token . '.tmp';
+            
+            if ($this->log) {
+                $this->log->write('GDT Module Manager: Copying to upload directory: ' . $target_file);
+            }
+            
+            if (!copy($zip_file_path, $target_file)) {
+                throw new \Exception('Не удалось скопировать файл в директорию загрузок');
+            }
+
+            // Сохраняем токен в сессии (как это делает стандартный installer)
+            $session = $this->registry->get('session');
+            $session->data['install'] = $install_token;
+            
+            if ($this->log) {
+                $this->log->write('GDT Module Manager: Install token: ' . $install_token);
+            }
+
+            // Этап 1: Распаковка
+            if ($this->log) {
+                $this->log->write('GDT Module Manager: Starting unzip step');
+            }
+            $unzip_result = $this->executeInstallStep('marketplace/install/unzip', $install_token);
+            if (isset($unzip_result['error'])) {
+                throw new \Exception('Ошибка распаковки: ' . $unzip_result['error']);
+            }
+
+            // Этап 2: Перемещение файлов
+            if ($this->log) {
+                $this->log->write('GDT Module Manager: Starting move step');
+            }
+            $move_result = $this->executeInstallStep('marketplace/install/move', $install_token);
+            if (isset($move_result['error'])) {
+                throw new \Exception('Ошибка перемещения файлов: ' . $move_result['error']);
+            }
+
+            // Этап 3: Обработка XML модификаций
+            if ($this->log) {
+                $this->log->write('GDT Module Manager: Starting XML step');
+            }
+            $xml_result = $this->executeInstallStep('marketplace/install/xml', $install_token);
+            if (isset($xml_result['error'])) {
+                throw new \Exception('Ошибка обработки XML: ' . $xml_result['error']);
+            }
+
+            // Этап 4: Очистка временных файлов
+            if ($this->log) {
+                $this->log->write('GDT Module Manager: Starting cleanup step');
+            }
+            $remove_result = $this->executeInstallStep('marketplace/install/remove', $install_token);
+            if (isset($remove_result['error'])) {
+                $this->log->write('GDT Module Manager warning: ' . $remove_result['error']);
+            }
+
+            if ($this->log) {
+                $this->log->write('GDT Module Manager: Successfully installed module via OpenCart process');
+            }
+
+            return true;
+        } catch (\Exception $e) {
+            $error = 'Ошибка установки через OpenCart: ' . $e->getMessage();
+            if ($this->log) {
+                $this->log->write('GDT Module Manager error: ' . $error);
+            }
+            return $error;
+        }
+    }
+
+    /**
+     * Выполняет этап установки через встроенный контроллер OpenCart
+     * 
+     * @param string $route Маршрут контроллера
+     * @param string $install_token Токен установки
+     * @return array
+     */
+    private function executeInstallStep($route, $install_token) {
+        try {
+            $load = $this->registry->get('load');
+            $session = $this->registry->get('session');
+            $response = $this->registry->get('response');
+            
+            // Сохраняем токен в сессии
+            $session->data['install'] = $install_token;
+            
+            // Создаем mock request для контроллера
+            $request = $this->registry->get('request');
+            $original_get = isset($request->get) ? $request->get : array();
+            
+            // Устанавливаем необходимые параметры
+            $request->get['extension_install_id'] = 0; // Для новой установки
+            $request->get['user_token'] = $session->data['user_token']; // Добавляем user_token
+            
+            // Сохраняем текущий вывод response
+            $original_output = $response->getOutput();
+            
+            // Очищаем response перед вызовом контроллера
+            $response->setOutput('');
+            
+            // Выполняем контроллер
+            $load->controller($route);
+            
+            // Получаем вывод контроллера
+            $output = $response->getOutput();
+            
+            // Восстанавливаем оригинальные параметры
+            $request->get = $original_get;
+            $response->setOutput($original_output);
+            
+            // Логируем для отладки
+            if ($this->log) {
+                $this->log->write('GDT Module Manager: Response from ' . $route . ': ' . substr($output, 0, 500));
+            }
+            
+            // Парсим JSON ответ
+            $result = json_decode($output, true);
+            
+            if (!$result) {
+                // Пробуем очистить вывод от возможного мусора
+                $output = trim($output);
+                
+                // Ищем JSON в выводе
+                if (preg_match('/\{.*\}/s', $output, $matches)) {
+                    $result = json_decode($matches[0], true);
+                }
+                
+                if (!$result) {
+                    if ($this->log) {
+                        $this->log->write('GDT Module Manager error: Invalid JSON response from ' . $route . ': ' . $output);
+                    }
+                    return array('error' => 'Неожиданный формат ответа от контроллера. Ответ: ' . substr($output, 0, 200));
+                }
+            }
+            
+            return $result;
+        } catch (\Exception $e) {
+            if ($this->log) {
+                $this->log->write('GDT Module Manager exception in executeInstallStep: ' . $e->getMessage());
+            }
+            return array('error' => $e->getMessage());
+        }
+    }
+
+    /**
      * Установка модуля по коду
      * 
      * @param string $module_code Код модуля
@@ -862,7 +1180,7 @@ class Manager {
     }
     
     /**
-     * Удаление модуля по JSON-данным
+     * Удаление модуля по коду с поддержкой разных источников
      * 
      * @param string $module_code Код модуля
      * @return bool|string
@@ -872,7 +1190,7 @@ class Manager {
             $this->log->write('GDT Module Manager: Starting uninstall for module ' . $module_code);
         }
 
-        // Получаем данные модуля
+        // Получаем данные модуля из всех источников
         $module = $this->getModuleByCode($module_code);
         if (!$module) {
             $error = 'Модуль ' . $module_code . ' не найден';
@@ -883,18 +1201,18 @@ class Manager {
         }
 
         try {
-
             // Запускаем метод деинсталляции в контроллере модуля, если он есть
             if (isset($module['controller'])) {
                 $this->load->controller($module['controller'] . '/uninstall');
             }
 
-            // Удаляем файлы модуля
-            $this->removeModuleFiles($module);
-        
+            // Удаляем файлы модуля, если есть информация о них
+            if (isset($module['files']) || isset($module['delete'])) {
+                $this->removeModuleFiles($module);
+            }
             
-            // Удаляем файл конфигурации модуля
-            $this->removeModuleConfig($module_code);
+            // Удаляем модуль в зависимости от источника
+            $this->removeModuleBySource($module, $module_code);
             
             if ($this->log) {
                 $this->log->write('GDT Module Manager: Successfully uninstalled module ' . $module_code);
@@ -907,6 +1225,97 @@ class Manager {
                 $this->log->write('GDT Module Manager error: ' . $error);
             }
             return $error;
+        }
+    }
+
+    /**
+     * Удаляет модуль в зависимости от источника
+     * 
+     * @param array $module Данные модуля
+     * @param string $module_code Код модуля
+     * @return bool
+     */
+    private function removeModuleBySource($module, $module_code) {
+        $source = isset($module['source']) ? $module['source'] : 'gdt_modules';
+        
+        switch ($source) {
+            case 'opencart_modification':
+                return $this->removeOpenCartModification($module);
+                
+            case 'system_file':
+                return $this->removeSystemFile($module);
+                
+            case 'gdt_modules':
+            default:
+                // Удаляем из собственной базы данных
+                $this->deleteModuleFromDatabase($module_code);
+                // Удаляем файл конфигурации модуля
+                $this->removeModuleConfig($module_code);
+                return true;
+        }
+    }
+
+    /**
+     * Удаляет модификатор OpenCart
+     * 
+     * @param array $module Данные модуля
+     * @return bool
+     */
+    private function removeOpenCartModification($module) {
+        if (!isset($module['modification_id'])) {
+            return false;
+        }
+        
+        $db = $this->registry->get('db');
+        
+        try {
+            // Деактивируем модификатор вместо полного удаления
+            $query = "UPDATE `" . DB_PREFIX . "modification` SET `status` = 0 WHERE `modification_id` = '" . (int)$module['modification_id'] . "'";
+            $db->query($query);
+            
+            if ($this->log) {
+                $this->log->write('GDT Module Manager: Deactivated OpenCart modification with ID ' . $module['modification_id']);
+            }
+            
+            return true;
+        } catch (\Exception $e) {
+            $this->logError('GDT Module Manager: Error removing OpenCart modification: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Удаляет системный файл модификатора
+     * 
+     * @param array $module Данные модуля
+     * @return bool
+     */
+    private function removeSystemFile($module) {
+        if (!isset($module['file_path']) || !file_exists($module['file_path'])) {
+            return false;
+        }
+        
+        try {
+            // Создаем резервную копию перед удалением
+            $backup_path = $module['file_path'] . '.backup.' . date('Y-m-d_H-i-s');
+            if (copy($module['file_path'], $backup_path)) {
+                if ($this->log) {
+                    $this->log->write('GDT Module Manager: Created backup of system file: ' . $backup_path);
+                }
+            }
+            
+            // Удаляем оригинальный файл
+            if (unlink($module['file_path'])) {
+                if ($this->log) {
+                    $this->log->write('GDT Module Manager: Removed system file: ' . $module['file_path']);
+                }
+                return true;
+            }
+            
+            return false;
+        } catch (\Exception $e) {
+            $this->logError('GDT Module Manager: Error removing system file: ' . $e->getMessage());
+            return false;
         }
     }
 
@@ -1237,6 +1646,46 @@ public function saveModuleToDatabase($module_code, $version, $data) {
 }
 
     /**
+     * Обновляет версию модуля в базе данных после успешного обновления
+     * 
+     * @param string $module_code Код модуля
+     * @param string $new_version Новая версия
+     * @param array $update_info Информация об обновлении
+     * @return bool
+     */
+    public function updateModuleVersion($module_code, $new_version, $update_info = array()) {
+        // Получаем текущие данные модуля
+        $module_data = $this->getModuleFromDatabase($module_code);
+        
+        if (!$module_data) {
+            // Если модуля нет в базе, создаем новую запись
+            $module_data = array(
+                'code' => $module_code,
+                'version' => $new_version,
+                'name' => $update_info['name'] ?? $module_code,
+                'description' => $update_info['description'] ?? '',
+                'author' => $update_info['author'] ?? '',
+                'updated_at' => date('Y-m-d H:i:s')
+            );
+        } else {
+            // Обновляем версию
+            $module_data['version'] = $new_version;
+            $module_data['updated_at'] = date('Y-m-d H:i:s');
+            
+            // Добавляем дополнительную информацию из update_info, если есть
+            if (isset($update_info['name'])) {
+                $module_data['name'] = $update_info['name'];
+            }
+            if (isset($update_info['description'])) {
+                $module_data['description'] = $update_info['description'];
+            }
+        }
+        
+        // Сохраняем в базу данных
+        return $this->saveModuleToDatabase($module_code, $new_version, $module_data);
+    }
+
+    /**
      * Получает информацию о модуле из базы данных
      * 
      * @param string $module_code Код модуля
@@ -1286,6 +1735,131 @@ public function saveModuleToDatabase($module_code, $version, $data) {
                 $this->logError('GDT Module Manager: Failed to read JSON file');
                 return null;
             }
+        }
+    }
+
+    /**
+     * Получает модули из таблицы модификаторов OpenCart
+     * 
+     * @return array
+     */
+    private function getModulesFromOpenCartModifications() {
+        $modules = [];
+        $db = $this->registry->get('db');
+        
+        try {
+            // Проверяем существование таблицы модификаторов
+            $table_exists_query = "SHOW TABLES LIKE '" . DB_PREFIX . "modification'";
+            $table_result = $db->query($table_exists_query);
+            
+            if ($table_result->num_rows > 0) {
+                $query = "SELECT * FROM `" . DB_PREFIX . "modification` WHERE `status` = 1";
+                $result = $db->query($query);
+                
+                if ($result->num_rows > 0) {
+                    foreach ($result->rows as $row) {
+                        $module_data = [
+                            'code' => $row['code'],
+                            'name' => $row['name'],
+                            'version' => isset($row['version']) ? $row['version'] : '1.0.0',
+                            'author' => isset($row['author']) ? $row['author'] : 'Unknown',
+                            'link' => isset($row['link']) ? $row['link'] : '',
+                            'description' => isset($row['description']) ? $row['description'] : '',
+                            'source' => 'opencart_modification',
+                            'modification_id' => $row['modification_id'],
+                            'date_added' => isset($row['date_added']) ? $row['date_added'] : '',
+                        ];
+                        $modules[] = $module_data;
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            $this->logError('GDT Module Manager: Error getting OpenCart modifications: ' . $e->getMessage());
+        }
+        
+        return $modules;
+    }
+
+    /**
+     * Получает модули из системных файлов .ocmod.xml
+     * 
+     * @return array
+     */
+    private function getModulesFromSystemFiles() {
+        $modules = [];
+        
+        try {
+            $system_dir = constant('DIR_SYSTEM');
+            $pattern = $system_dir . '*.ocmod.xml';
+            $files = glob($pattern);
+            
+            foreach ($files as $file) {
+                $module_data = $this->parseOcmodFile($file);
+                if ($module_data) {
+                    $modules[] = $module_data;
+                }
+            }
+        } catch (\Exception $e) {
+            $this->logError('GDT Module Manager: Error getting system modules: ' . $e->getMessage());
+        }
+        
+        return $modules;
+    }
+
+    /**
+     * Парсит файл .ocmod.xml и извлекает информацию о модуле
+     * 
+     * @param string $file_path Путь к файлу .ocmod.xml
+     * @return array|null
+     */
+    private function parseOcmodFile($file_path) {
+        try {
+            if (!file_exists($file_path)) {
+                return null;
+            }
+            
+            $xml_content = file_get_contents($file_path);
+            if ($xml_content === false) {
+                return null;
+            }
+            
+            // Отключаем вывод ошибок XML для избежания предупреждений
+            $old_setting = libxml_use_internal_errors(true);
+            libxml_clear_errors();
+            
+            $xml = simplexml_load_string($xml_content);
+            
+            // Восстанавливаем настройки обработки ошибок
+            libxml_use_internal_errors($old_setting);
+            
+            if ($xml === false) {
+                $this->logError('GDT Module Manager: Failed to parse XML file: ' . $file_path);
+                return null;
+            }
+            
+            $module_data = [
+                'code' => (string)$xml->code,
+                'name' => (string)$xml->name,
+                'version' => isset($xml->version) ? (string)$xml->version : '1.0.0',
+                'author' => isset($xml->author) ? (string)$xml->author : 'Unknown',
+                'link' => isset($xml->link) ? (string)$xml->link : '',
+                'description' => isset($xml->description) ? (string)$xml->description : '',
+                'source' => 'system_file',
+                'file_path' => $file_path,
+                'file_name' => basename($file_path),
+            ];
+            
+            // Проверяем обязательные поля
+            if (empty($module_data['code']) || empty($module_data['name'])) {
+                $this->logError('GDT Module Manager: Invalid module data in file: ' . $file_path);
+                return null;
+            }
+            
+            return $module_data;
+            
+        } catch (\Exception $e) {
+            $this->logError('GDT Module Manager: Error parsing ocmod file ' . $file_path . ': ' . $e->getMessage());
+            return null;
         }
     }
 }

@@ -402,8 +402,8 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                         $this->log->write('GDT Updater: Starting update for module ' . $code . ' from version ' . $module['version'] . ' to ' . $update_info['version']);
                         
                         try {
-                            // Скачиваем и устанавливаем обновление
-                            $result = $this->manager->downloadAndInstallUpdate($server_url, $module, $update_info, '', $api_key);
+                            // Скачиваем и устанавливаем обновление через встроенный процесс OpenCart
+                            $result = $this->manager->downloadAndInstallUpdate($server_url, $module, $update_info, '', $api_key, true);
 
                             if ($result === true) {
                                 // Очищаем все кэши OpenCart
@@ -412,9 +412,9 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                                 // Проверяем, что версия действительно обновилась
                                 $updated_module = $this->manager->getModuleByCode($code);
                                 if ($updated_module && $updated_module['version'] === $update_info['version']) {
-                                    $json['success'] = sprintf($this->language->get('text_update_success'), $module['name'] ?? $module['module_name']) . ' (v' . $update_info['version'] . ')';
+                                    $json['success'] = sprintf($this->language->get('text_update_success'), $module['name'] ?? $module['module_name']) . ' (v' . $update_info['version'] . ') через встроенный процесс OpenCart';
                                 } else {
-                                    $json['warning'] = 'Файлы скопированы, но версия модуля не обновилась. Возможно, требуется ручная проверка.';
+                                    $json['warning'] = 'Файлы установлены через OpenCart, но версия модуля не обновилась. Возможно, требуется ручная проверка.';
                                 }
                             } else {
                                 $json['error'] = $result;
@@ -683,7 +683,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $this->model_setting_event->addEvent('auto_update_menu', 'admin/view/common/column_left/before', 'extension/module/gdt_updater/menuAdmin');
         
         //получаем json 
-        $gdt_updater_json = $this->manager->getJson('gdt_updater');
+        $gdt_updater_json = $this->manager->getJson();
         if ($gdt_updater_json) {
         $this->manager->saveModuleToDatabase(
             'gdt_updater', 

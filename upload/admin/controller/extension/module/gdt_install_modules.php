@@ -477,31 +477,35 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
     }
     
     /**
-     * Установка модуля
+     * Установка модуля через встроенный процесс OpenCart
      */
     public function installModule() {
+        $this->load->language('extension/module/gdt_install_modules');
         $this->load->library('gbitstudio/modules/manager');
         $manager = new \Gbitstudio\Modules\Manager($this->registry);
+        
+        $json = array();
         
         $module_code = isset($this->request->post['module_code']) ? $this->request->post['module_code'] : '';
         $download_url = isset($this->request->post['download_url']) ? $this->request->post['download_url'] : '';
         
         if (empty($module_code) || empty($download_url)) {
-            $json = array(
-                'error' => 'Недостаточно данных для установки модуля'
-            );
+            $json['error'] = 'Недостаточно данных для установки модуля';
         } else {
             try {
-                $result = $manager->installModuleURL($module_code, $download_url);
-                if ($result) {
-                    $json = array(
-                        'success' => 'Модуль "' . $module_code . '" успешно установлен'
-                    );
+                // Используем встроенный процесс OpenCart для установки
+                $result = $manager->installModuleURL($module_code, $download_url, true);
+                
+                if ($result === true) {
+                    // Очищаем кэш после установки
+                    $manager->clearCache();
+                    
+                    $json['success'] = 'Модуль "' . $module_code . '" успешно установлен через встроенный процесс OpenCart';
+                } else {
+                    $json['error'] = $result;
                 }
             } catch (Exception $e) {
-                $json = array(
-                    'error' => $e->getMessage()
-                );
+                $json['error'] = 'Ошибка установки: ' . $e->getMessage();
             }
         }
         
