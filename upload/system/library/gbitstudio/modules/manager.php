@@ -26,87 +26,100 @@ class Manager {
         return $this->registry->get($name);
     }    /**
      * Получает список установленных модулей из базы данных, модификаторов OpenCart и системных файлов
+     * Приоритет: OpenCart modifications > System files > gdt_modules (deprecated)
      * 
      * @return array
      */
     public function getInstalledModules() {
         $modules = [];
+        $modules_by_code = [];
         $db = $this->registry->get('db');
         
-        // 1. Получаем модули из собственной таблицы gdt_modules
-        $query = "SELECT * FROM `gdt_modules`;";
-        $result = $db->query($query);
+        // 1. ПРИОРИТЕТ: Получаем модули из таблицы модификаторов OpenCart (основной источник)
+        $opencart_modules = $this->getModulesFromOpenCartModifications();
+        foreach ($opencart_modules as $module) {
+            if (isset($module['code'])) {
+                $modules_by_code[$module['code']] = $module;
+            }
+        }
+        
+        // 2. Получаем модули из системных файлов .ocmod.xml (средний приоритет)
+        $system_modules = $this->getModulesFromSystemFiles();
+        foreach ($system_modules as $module) {
+            if (isset($module['code']) && !isset($modules_by_code[$module['code']])) {
+                $modules_by_code[$module['code']] = $module;
+            }
+        }
+        
+        // 3. DEPRECATED: Получаем модули из собственной таблицы gdt_modules (обратная совместимость)
+        // Эта таблица будет снята с поддержки, но пока сохраняется для старых модулей
+        try {
+            $query = "SELECT * FROM `gdt_modules`;";
+            $result = $db->query($query);
 
-        if ($result->num_rows > 0) {
-            foreach ($result->rows as $row) {
-                $module_data = json_decode($row['data'], true);
-                if ($module_data) {
-                    $modules[] = $module_data;
+            if ($result->num_rows > 0) {
+                foreach ($result->rows as $row) {
+                    $module_data = json_decode($row['data'], true);
+                    if ($module_data && isset($module_data['code'])) {
+                        // Добавляем только если модуль еще не найден в приоритетных источниках
+                        if (!isset($modules_by_code[$module_data['code']])) {
+                            $module_data['source'] = 'gdt_modules_deprecated';
+                            $modules_by_code[$module_data['code']] = $module_data;
+                        }
+                    }
                 }
             }
+        } catch (\Exception $e) {
+            // Игнорируем ошибки таблицы gdt_modules для обратной совместимости
+            if ($this->log) {
+                $this->log->write('GDT Module Manager: gdt_modules table not available (deprecated): ' . $e->getMessage());
+            }
         }
-
-        // 2. Получаем модули из таблицы модификаторов OpenCart
-        $opencart_modules = $this->getModulesFromOpenCartModifications();
-        $modules = array_merge($modules, $opencart_modules);
-        
-        // 3. Получаем модули из системных файлов .ocmod.xml
-        $system_modules = $this->getModulesFromSystemFiles();
-        $modules = array_merge($modules, $system_modules);
 
         // 4. Добавляем сам gdt_updater если его нет в списке
-        $gdt_updater_found = false;
-        foreach ($modules as $module) {
-            if (isset($module['code']) && $module['code'] === 'gdt_updater') {
-                $gdt_updater_found = true;
-                break;
-            }
-        }
-
-        if (!$gdt_updater_found) {
+        if (!isset($modules_by_code['gdt_updater'])) {
             $gdt_updater_data = $this->getJson();
-            if ($gdt_updater_data) {
-                $modules[] = $gdt_updater_data;
+            if ($gdt_updater_data && isset($gdt_updater_data['code'])) {
+                $modules_by_code[$gdt_updater_data['code']] = $gdt_updater_data;
             }
         }
 
-        // 5. Удаляем дубликаты модулей по коду
-        $unique_modules = [];
-        $seen_codes = [];
-        
-        foreach ($modules as $module) {
-            if (isset($module['code']) && !in_array($module['code'], $seen_codes)) {
-                $unique_modules[] = $module;
-                $seen_codes[] = $module['code'];
-            }
-        }
-
-        return $unique_modules;
+        // Преобразуем ассоциативный массив обратно в индексированный
+        return array_values($modules_by_code);
     }
 
     /**
-     * Получает модуль по коду из всех источников (база данных, модификаторы OpenCart, системные файлы)
+     * Получает модуль по коду из всех источников
+     * Приоритет: OpenCart modifications > System files > gdt_modules (deprecated)
      * 
      * @param string $code Код модуля
      * @return array|null
      */
     public function getModuleByCode($code) {
-        // Сначала ищем в собственной базе данных
-        $module = $this->getModuleFromDatabase($code);
-        if ($module) {
-            return $module;
-        }
-        
-        // Ищем в модификаторах OpenCart
+        // ПРИОРИТЕТ 1: Ищем в модификаторах OpenCart (основной источник)
         $module = $this->getModuleFromOpenCartModifications($code);
         if ($module) {
             return $module;
         }
         
-        // Ищем в системных файлах
+        // ПРИОРИТЕТ 2: Ищем в системных файлах
         $module = $this->getModuleFromSystemFiles($code);
         if ($module) {
             return $module;
+        }
+        
+        // ПРИОРИТЕТ 3 (DEPRECATED): Ищем в собственной базе данных для обратной совместимости
+        try {
+            $module = $this->getModuleFromDatabase($code);
+            if ($module) {
+                $module['source'] = 'gdt_modules_deprecated';
+                return $module;
+            }
+        } catch (\Exception $e) {
+            // Игнорируем ошибки таблицы gdt_modules
+            if ($this->log) {
+                $this->log->write('GDT Module Manager: gdt_modules table not available for ' . $code . ' (deprecated)');
+            }
         }
         
         return null;
@@ -1105,6 +1118,15 @@ class Manager {
                 throw new \Exception('Не удалось скопировать файл в директорию загрузок');
             }
 
+            // Создаем запись в таблице extension_install (как это делает стандартный installer)
+            $this->load->model('setting/extension');
+            $filename = !empty($module_code) ? $module_code . '.ocmod.zip' : basename($zip_file_path);
+            $extension_install_id = $this->model_setting_extension->addExtensionInstall($filename);
+            
+            if ($this->log) {
+                $this->log->write('GDT Module Manager: Created extension_install_id: ' . $extension_install_id);
+            }
+
             // Сохраняем токен в сессии (как это делает стандартный installer)
             $session = $this->registry->get('session');
             $session->data['install'] = $install_token;
@@ -1117,7 +1139,7 @@ class Manager {
             if ($this->log) {
                 $this->log->write('GDT Module Manager: Starting unzip step');
             }
-            $unzip_result = $this->executeInstallStep('marketplace/install/unzip', $install_token);
+            $unzip_result = $this->executeInstallStep('marketplace/install/unzip', $install_token, $extension_install_id);
             if (isset($unzip_result['error'])) {
                 throw new \Exception('Ошибка распаковки: ' . $unzip_result['error']);
             }
@@ -1126,7 +1148,7 @@ class Manager {
             if ($this->log) {
                 $this->log->write('GDT Module Manager: Starting move step');
             }
-            $move_result = $this->executeInstallStep('marketplace/install/move', $install_token);
+            $move_result = $this->executeInstallStep('marketplace/install/move', $install_token, $extension_install_id);
             if (isset($move_result['error'])) {
                 throw new \Exception('Ошибка перемещения файлов: ' . $move_result['error']);
             }
@@ -1135,7 +1157,7 @@ class Manager {
             if ($this->log) {
                 $this->log->write('GDT Module Manager: Starting XML step');
             }
-            $xml_result = $this->executeInstallStep('marketplace/install/xml', $install_token);
+            $xml_result = $this->executeInstallStep('marketplace/install/xml', $install_token, $extension_install_id);
             if (isset($xml_result['error'])) {
                 throw new \Exception('Ошибка обработки XML: ' . $xml_result['error']);
             }
@@ -1144,7 +1166,7 @@ class Manager {
             if ($this->log) {
                 $this->log->write('GDT Module Manager: Starting cleanup step');
             }
-            $remove_result = $this->executeInstallStep('marketplace/install/remove', $install_token);
+            $remove_result = $this->executeInstallStep('marketplace/install/remove', $install_token, $extension_install_id);
             if (isset($remove_result['error'])) {
                 $this->log->write('GDT Module Manager warning: ' . $remove_result['error']);
             }
@@ -1168,9 +1190,10 @@ class Manager {
      * 
      * @param string $route Маршрут контроллера
      * @param string $install_token Токен установки
+     * @param int $extension_install_id ID записи установки расширения
      * @return array
      */
-    private function executeInstallStep($route, $install_token) {
+    private function executeInstallStep($route, $install_token, $extension_install_id = 0) {
         try {
             $load = $this->registry->get('load');
             $session = $this->registry->get('session');
@@ -1184,7 +1207,7 @@ class Manager {
             $original_get = isset($request->get) ? $request->get : array();
             
             // Устанавливаем необходимые параметры
-            $request->get['extension_install_id'] = 0; // Для новой установки
+            $request->get['extension_install_id'] = (int)$extension_install_id;
             $request->get['user_token'] = $session->data['user_token']; // Добавляем user_token
             
             // Сохраняем текущий вывод response
@@ -1670,22 +1693,36 @@ class Manager {
     
     /**
      * Создает таблицу для хранения информации о модулях
+     * DEPRECATED: Таблица gdt_modules устарела и будет удалена в будущих версиях
+     * Сохраняется только для обратной совместимости со старыми модулями
      */
     public function createModulesTable() {
-        $db = $this->registry->get('db');
-        $query = "CREATE TABLE IF NOT EXISTS `gdt_modules` (
-            `id` INT AUTO_INCREMENT PRIMARY KEY,
-            `module_code` VARCHAR(255) NOT NULL,
-            `version` VARCHAR(50) NOT NULL,
-            `data` JSON NOT NULL,
-            UNIQUE KEY `module_code` (`module_code`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
+        try {
+            $db = $this->registry->get('db');
+            $query = "CREATE TABLE IF NOT EXISTS `gdt_modules` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `module_code` VARCHAR(255) NOT NULL,
+                `version` VARCHAR(50) NOT NULL,
+                `data` JSON NOT NULL,
+                UNIQUE KEY `module_code` (`module_code`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='DEPRECATED: Use OpenCart modifications instead';";
 
-        $db->query($query);
+            $db->query($query);
+            
+            if ($this->log) {
+                $this->log->write('GDT Module Manager: Created deprecated gdt_modules table for backward compatibility');
+            }
+        } catch (\Exception $e) {
+            if ($this->log) {
+                $this->log->write('GDT Module Manager: Failed to create gdt_modules table: ' . $e->getMessage());
+            }
+        }
     }
 
     /**
      * Сохраняет информацию о модуле в базу данных
+     * DEPRECATED: Метод сохраняется для обратной совместимости
+     * Новые модули должны использовать OpenCart modifications
      * 
      * @param string $module_code Код модуля
      * @param string $version Версия модуля
@@ -1693,32 +1730,58 @@ class Manager {
      * @return bool
      */
 public function saveModuleToDatabase($module_code, $version, $data) {
-    $db = $this->registry->get('db');
-    $json_data = json_encode($data, JSON_UNESCAPED_UNICODE);
+    try {
+        $db = $this->registry->get('db');
+        
+        // Проверяем, существует ли таблица gdt_modules
+        $table_check = "SHOW TABLES LIKE 'gdt_modules'";
+        $table_result = $db->query($table_check);
+        
+        if ($table_result->num_rows == 0) {
+            // Таблица не существует, создаем для обратной совместимости
+            $this->createModulesTable();
+        }
+        
+        $json_data = json_encode($data, JSON_UNESCAPED_UNICODE);
 
-    // Проверяем, существует ли модуль с таким кодом
-    $query_check = "SELECT COUNT(*) as count FROM `gdt_modules` WHERE `module_code` = '" . $db->escape($module_code) . "';";
-    $result = $db->query($query_check);
+        // Проверяем, существует ли модуль с таким кодом
+        $query_check = "SELECT COUNT(*) as count FROM `gdt_modules` WHERE `module_code` = '" . $db->escape($module_code) . "';";
+        $result = $db->query($query_check);
 
-    if ($result->row['count'] > 0) {
-        // Если модуль существует, обновляем его данные
-        $query_update = "UPDATE `gdt_modules` 
-                         SET `version` = '" . $db->escape($version) . "', 
-                             `data` = '" . $db->escape($json_data) . "' 
-                         WHERE `module_code` = '" . $db->escape($module_code) . "';";
-        return $db->query($query_update);
-    } else {
-        // Если модуля нет, добавляем его
-        $query_insert = "INSERT INTO `gdt_modules` (`module_code`, `version`, `data`) 
-                         VALUES ('" . $db->escape($module_code) . "', 
-                                 '" . $db->escape($version) . "', 
-                                 '" . $db->escape($json_data) . "');";
-        return $db->query($query_insert);
+        if ($result->row['count'] > 0) {
+            // Если модуль существует, обновляем его данные
+            $query_update = "UPDATE `gdt_modules` 
+                             SET `version` = '" . $db->escape($version) . "', 
+                                 `data` = '" . $db->escape($json_data) . "' 
+                             WHERE `module_code` = '" . $db->escape($module_code) . "';";
+            $db->query($query_update);
+        } else {
+            // Если модуля нет, добавляем его
+            $query_insert = "INSERT INTO `gdt_modules` (`module_code`, `version`, `data`) 
+                             VALUES ('" . $db->escape($module_code) . "', 
+                                     '" . $db->escape($version) . "', 
+                                     '" . $db->escape($json_data) . "');";
+            $db->query($query_insert);
+        }
+        
+        if ($this->log) {
+            $this->log->write('GDT Module Manager: Module data saved to deprecated gdt_modules table for backward compatibility: ' . $module_code);
+        }
+        
+        return true;
+    } catch (\Exception $e) {
+        if ($this->log) {
+            $this->log->write('GDT Module Manager: Failed to save to gdt_modules (deprecated): ' . $e->getMessage());
+        }
+        // Не выбрасываем исключение, просто возвращаем false для обратной совместимости
+        return false;
     }
 }
 
     /**
      * Обновляет версию модуля в базе данных после успешного обновления
+     * DEPRECATED: Метод сохраняется для обратной совместимости
+     * Обновления теперь происходят через OpenCart modifications
      * 
      * @param string $module_code Код модуля
      * @param string $new_version Новая версия
@@ -1726,57 +1789,84 @@ public function saveModuleToDatabase($module_code, $version, $data) {
      * @return bool
      */
     public function updateModuleVersion($module_code, $new_version, $update_info = array()) {
-        // Получаем текущие данные модуля
-        $module_data = $this->getModuleFromDatabase($module_code);
+        // Получаем текущие данные модуля из любого источника (приоритет OpenCart modifications)
+        $module_data = $this->getModuleByCode($module_code);
         
         if (!$module_data) {
-            // Если модуля нет в базе, создаем новую запись
+            // Если модуль не найден, создаем минимальные данные
             $module_data = array(
                 'code' => $module_code,
                 'version' => $new_version,
                 'name' => $update_info['name'] ?? $module_code,
                 'description' => $update_info['description'] ?? '',
-                'author' => $update_info['author'] ?? '',
+                'author' => $update_info['author'] ?? 'Unknown',
                 'updated_at' => date('Y-m-d H:i:s')
             );
         } else {
-            // Обновляем версию
+            // Обновляем версию в существующих данных
             $module_data['version'] = $new_version;
             $module_data['updated_at'] = date('Y-m-d H:i:s');
             
-            // Добавляем дополнительную информацию из update_info, если есть
+            // Добавляем дополнительную информацию из update_info
             if (isset($update_info['name'])) {
                 $module_data['name'] = $update_info['name'];
             }
             if (isset($update_info['description'])) {
                 $module_data['description'] = $update_info['description'];
             }
+            if (isset($update_info['author'])) {
+                $module_data['author'] = $update_info['author'];
+            }
         }
         
-        // Сохраняем в базу данных
-        return $this->saveModuleToDatabase($module_code, $new_version, $module_data);
+        // Сохраняем в базу данных (deprecated, но для обратной совместимости)
+        $this->saveModuleToDatabase($module_code, $new_version, $module_data);
+        
+        if ($this->log) {
+            $this->log->write('GDT Module Manager: Module version updated to ' . $new_version . ' for ' . $module_code);
+        }
+        
+        return true;
     }
 
     /**
      * Получает информацию о модуле из базы данных
+     * DEPRECATED: Используется только для обратной совместимости
      * 
      * @param string $module_code Код модуля
      * @return array|null
      */
     public function getModuleFromDatabase($module_code) {
-        $db = $this->registry->get('db');
-        $query = "SELECT * FROM `gdt_modules` WHERE `module_code` = '" . $db->escape($module_code) . "' LIMIT 1;";
-        $result = $db->query($query);
-
-        if ($result->num_rows > 0) {
-            $json_data = json_decode($result->row['data'], true);
-            if(!isset($json_data['code'])) {
-                $json_data['code'] = $module_code; // Добавляем код модуля
+        try {
+            $db = $this->registry->get('db');
+            
+            // Проверяем существование таблицы
+            $table_check = "SHOW TABLES LIKE 'gdt_modules'";
+            $table_result = $db->query($table_check);
+            
+            if ($table_result->num_rows == 0) {
+                return null; // Таблица не существует
             }
-            return $json_data;
-        }
+            
+            $query = "SELECT * FROM `gdt_modules` WHERE `module_code` = '" . $db->escape($module_code) . "' LIMIT 1;";
+            $result = $db->query($query);
 
-        return null;
+            if ($result->num_rows > 0) {
+                $json_data = json_decode($result->row['data'], true);
+                if(!isset($json_data['code'])) {
+                    $json_data['code'] = $module_code; // Добавляем код модуля
+                }
+                $json_data['source'] = 'gdt_modules_deprecated';
+                return $json_data;
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            if ($this->log) {
+                $this->log->write('GDT Module Manager: Error reading from deprecated gdt_modules table: ' . $e->getMessage());
+            }
+            return null;
+        }
     }
 
     /**
