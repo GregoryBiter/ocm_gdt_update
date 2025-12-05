@@ -1,0 +1,16 @@
+{
+    "code": "test_module",
+    "module_name": "Test Module",
+    "version": "1.2.3",
+    "creator_name": "Test Author",
+    "creator_email": "test@example.com",
+    "description": "Test module for migration",
+    "controller": "extension/module/test_module",
+    "provider": "provider/module/test_module/boot",
+    "author_url": "https://example.com",
+    "files": [
+        "admin/controller/extension/module/test_module.php",
+        "admin/model/extension/module/test_module.php",
+        "system/library/test/module.php"
+    ]
+}

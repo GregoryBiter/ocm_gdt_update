@@ -2,6 +2,19 @@
 class ControllerExtensionModuleGdtInstallModules extends Controller {
     private $error = array();
 
+    /**
+     * Отримує фабрику сервісів
+     * 
+     * @return \Gbitstudio\Modules\ServiceFactory
+     */
+    private function getServiceFactory() {
+        if (!$this->registry->has('gb_modules')) {
+            $this->registry->set('gb_modules', new \Gbitstudio\Modules\ServiceFactory($this->registry));
+        }
+        
+        return $this->registry->get('gb_modules');
+    }
+
     public function index() {
         // Перенаправляем на страницу магазина модулей по умолчанию
         $this->response->redirect($this->url->link('extension/module/gdt_install_modules/store', 'user_token=' . $this->session->data['user_token'], true));
@@ -176,20 +189,12 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
      */
     public function getFeaturedModules() {
         try {
-            // Получаем URL сервера модулей
-            $server_url = $this->config->get('module_gdt_updater_server');
-            if (empty($server_url)) {
-                $server_url = HTTP_SERVER . 'ocm_gdt_update_server';
-            }
+            $catalogService = $this->getServiceFactory()->getModuleCatalogService();
+            $moduleService = $this->getServiceFactory()->getModuleService();
             
-            // Используем manager для получения модулей с сервера
-            $this->load->library('gbitstudio/modules/manager');
-            $manager = new \Gbitstudio\Modules\Manager($this->registry);
-            
-            $modules = $manager->getModulesFromServer($server_url, array('featured' => 1));
-            
-            // Добавляем информацию об установленных модулях
-            $modules = $this->markInstalledModules($modules, $manager);
+            $modules = $catalogService->getFeaturedModules();
+            $installed_modules = $moduleService->getInstalledModules();
+            $modules = $catalogService->markInstalledModules($modules, $installed_modules);
             
             $json = array(
                 'success' => true,
@@ -210,20 +215,12 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
      */
     public function getPopularModules() {
         try {
-            // Получаем URL сервера модулей
-            $server_url = $this->config->get('module_gdt_updater_server');
-            if (empty($server_url)) {
-                $server_url = HTTP_SERVER . 'ocm_gdt_update_server';
-            }
+            $catalogService = $this->getServiceFactory()->getModuleCatalogService();
+            $moduleService = $this->getServiceFactory()->getModuleService();
             
-            // Используем manager для получения модулей с сервера
-            $this->load->library('gbitstudio/modules/manager');
-            $manager = new \Gbitstudio\Modules\Manager($this->registry);
-            
-            $modules = $manager->getModulesFromServer($server_url, array('popular' => 1));
-            
-            // Добавляем информацию об установленных модулях
-            $modules = $this->markInstalledModules($modules, $manager);
+            $modules = $catalogService->getPopularModules();
+            $installed_modules = $moduleService->getInstalledModules();
+            $modules = $catalogService->markInstalledModules($modules, $installed_modules);
             
             $json = array(
                 'success' => true,
@@ -244,20 +241,12 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
      */
     public function getNewestModules() {
         try {
-            // Получаем URL сервера модулей
-            $server_url = $this->config->get('module_gdt_updater_server');
-            if (empty($server_url)) {
-                $server_url = HTTP_SERVER . 'ocm_gdt_update_server';
-            }
+            $catalogService = $this->getServiceFactory()->getModuleCatalogService();
+            $moduleService = $this->getServiceFactory()->getModuleService();
             
-            // Используем manager для получения модулей с сервера
-            $this->load->library('gbitstudio/modules/manager');
-            $manager = new \Gbitstudio\Modules\Manager($this->registry);
-            
-            $modules = $manager->getModulesFromServer($server_url, array('newest' => 1));
-            
-            // Добавляем информацию об установленных модулях
-            $modules = $this->markInstalledModules($modules, $manager);
+            $modules = $catalogService->getNewestModules();
+            $installed_modules = $moduleService->getInstalledModules();
+            $modules = $catalogService->markInstalledModules($modules, $installed_modules);
             
             $json = array(
                 'success' => true,
@@ -288,27 +277,12 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
             );
         } else {
             try {
-                // Получаем URL сервера модулей
-                $server_url = $this->config->get('module_gdt_updater_server');
-                if (empty($server_url)) {
-                    $server_url = HTTP_SERVER . 'ocm_gdt_update_server';
-                }
+                $catalogService = $this->getServiceFactory()->getModuleCatalogService();
+                $moduleService = $this->getServiceFactory()->getModuleService();
                 
-                // Используем manager для поиска модулей на сервере
-                $this->load->library('gbitstudio/modules/manager');
-                $manager = new \Gbitstudio\Modules\Manager($this->registry);
-                
-                $params = array(
-                    'search' => $query,
-                    'category' => $category,
-                    'sort' => $sort,
-                    'price' => $price
-                );
-                
-                $modules = $manager->getModulesFromServer($server_url, $params);
-                
-                // Добавляем информацию об установленных модулях
-                $modules = $this->markInstalledModules($modules, $manager);
+                $modules = $catalogService->searchModules($query, $category, $sort, $price);
+                $installed_modules = $moduleService->getInstalledModules();
+                $modules = $catalogService->markInstalledModules($modules, $installed_modules);
                 
                 $json = array(
                     'success' => true,
@@ -330,12 +304,12 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
      */
     public function getStoreModules() {
         try {
-            $modules = $this->getModulesFromExternalApi();
+            $catalogService = $this->getServiceFactory()->getModuleCatalogService();
+            $moduleService = $this->getServiceFactory()->getModuleService();
             
-            // Добавляем информацию об установленных модулях
-            $this->load->library('gbitstudio/modules/manager');
-            $manager = new \Gbitstudio\Modules\Manager($this->registry);
-            $modules = $this->markInstalledModules($modules, $manager);
+            $modules = $catalogService->getStoreModules();
+            $installed_modules = $moduleService->getInstalledModules();
+            $modules = $catalogService->markInstalledModules($modules, $installed_modules);
             
             $json = array(
                 'success' => true,
@@ -365,12 +339,12 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
             );
         } else {
             try {
-                $modules = $this->searchModulesInExternalApi($query, $category, $featured);
+                $catalogService = $this->getServiceFactory()->getModuleCatalogService();
+                $moduleService = $this->getServiceFactory()->getModuleService();
                 
-                // Добавляем информацию об установленных модулях
-                $this->load->library('gbitstudio/modules/manager');
-                $manager = new \Gbitstudio\Modules\Manager($this->registry);
-                $modules = $this->markInstalledModules($modules, $manager);
+                $modules = $catalogService->searchModules($query, $category);
+                $installed_modules = $moduleService->getInstalledModules();
+                $modules = $catalogService->markInstalledModules($modules, $installed_modules);
                 
                 $json = array(
                     'success' => true,
@@ -388,194 +362,72 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
     }
     
     /**
-     * Получение модулей из внешнего API
-     */
-    private function getModulesFromExternalApi($page = 1, $limit = 20) {
-        // URL внешнего API сервера модулей
-        $api_url = $this->config->get('module_gdt_updater_server');
-        if (empty($api_url)) {
-            $api_url = 'https://your-modules-server.com'; // Замените на реальный URL
-        }
-        
-        $api_key = $this->config->get('module_gdt_updater_api_key');
-        
-        $url = rtrim($api_url, '/') . '/index.php?route=gdt_update_server/modules';
-        $url .= '&page=' . $page . '&limit=' . $limit;
-        
-        $post_data = array();
-        if (!empty($api_key)) {
-            $post_data['api_key'] = $api_key;
-        }
-        
-        $response = $this->makeApiRequest($url, $post_data);
-        
-        if (isset($response['success']) && $response['success']) {
-            return $response['modules'];
-        } else {
-            throw new Exception('Ошибка получения модулей: ' . (isset($response['error']) ? $response['error'] : 'Неизвестная ошибка'));
-        }
-    }
-    
-    /**
-     * Поиск модулей во внешнем API
-     */
-    private function searchModulesInExternalApi($query, $category = '', $featured = 0) {
-        $api_url = $this->config->get('module_gdt_updater_server');
-        if (empty($api_url)) {
-            $api_url = 'https://your-modules-server.com'; // Замените на реальный URL
-        }
-        
-        $api_key = $this->config->get('module_gdt_updater_api_key');
-        
-        $url = rtrim($api_url, '/') . '/index.php?route=gdt_update_server/modules';
-        $url .= '&search=' . urlencode($query);
-        
-        if (!empty($category)) {
-            $url .= '&category=' . urlencode($category);
-        }
-        
-        if ($featured) {
-            $url .= '&featured=1';
-        }
-        
-        $post_data = array();
-        if (!empty($api_key)) {
-            $post_data['api_key'] = $api_key;
-        }
-        
-        $response = $this->makeApiRequest($url, $post_data);
-        
-        if (isset($response['success']) && $response['success']) {
-            return $response['modules'];
-        } else {
-            throw new Exception('Ошибка поиска модулей: ' . (isset($response['error']) ? $response['error'] : 'Неизвестная ошибка'));
-        }
-    }
-    
-    /**
-     * Выполнение API запроса
-     */
-    private function makeApiRequest($url, $post_data = array()) {
-        $ch = curl_init();
-        
-        curl_setopt_array($ch, array(
-            CURLOPT_URL => $url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 30,
-            CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => 2,
-            CURLOPT_USERAGENT => 'GDT-ModuleManager/1.0',
-            CURLOPT_HTTPHEADER => array(
-                'Content-Type: application/x-www-form-urlencoded',
-                'Accept: application/json'
-            )
-        ));
-        
-        if (!empty($post_data)) {
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
-        }
-        
-        $response = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $error = curl_error($ch);
-        curl_close($ch);
-        
-        if ($error) {
-            throw new Exception('cURL ошибка: ' . $error);
-        }
-        
-        if ($http_code !== 200) {
-            throw new Exception('HTTP ошибка: ' . $http_code);
-        }
-        
-        $decoded = json_decode($response, true);
-        if ($decoded === null) {
-            throw new Exception('Некорректный JSON ответ от сервера');
-        }
-        
-        return $decoded;
-    }
-    
-    /**
-     * Установка модуля через встроенный процесс OpenCart
+     * Установка модуля
      */
     public function installModule() {
         $this->load->language('extension/module/gdt_install_modules');
-        $this->load->library('gbitstudio/modules/manager');
-        $manager = new \Gbitstudio\Modules\Manager($this->registry);
         
         $json = array();
         
-        $module_code = isset($this->request->post['module_code']) ? $this->request->post['module_code'] : '';
-        $download_url = isset($this->request->post['download_url']) ? $this->request->post['download_url'] : '';
-        
-        if (empty($module_code) || empty($download_url)) {
-            $json['error'] = 'Недостаточно данных для установки модуля';
+        if ($this->request->server['REQUEST_METHOD'] != 'POST') {
+            $json['error'] = 'Неверный метод запроса';
+        } elseif (!isset($this->request->post['module_code']) || empty($this->request->post['module_code'])) {
+            $json['error'] = 'Не указан код модуля';
         } else {
+            $module_code = $this->request->post['module_code'];
+            $version = isset($this->request->post['version']) ? $this->request->post['version'] : 'latest';
+            
             try {
-                // Используем встроенный процесс OpenCart для установки
-                $result = $manager->installModuleURL($module_code, $download_url, true);
+                // Получаем URL сервера
+                $server_url = $this->config->get('module_gdt_updater_server');
+                if (empty($server_url)) {
+                    $server_url = getenv('GDT_UPDATE_SERVER');
+                    if (empty($server_url)) {
+                        $server_url = defined('HTTP_SERVER') ? HTTP_SERVER . 'ocm_gdt_update/server' : '';
+                    }
+                }
                 
-                if ($result === true) {
-                    // Очищаем кэш после установки
-                    $manager->clearCache();
-                    
-                    $json['success'] = 'Модуль "' . $module_code . '" успешно установлен через встроенный процесс OpenCart';
+                if (empty($server_url)) {
+                    $json['error'] = 'Не настроен сервер модулей';
                 } else {
-                    $json['error'] = $result;
+                    $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
+                    
+                    // Скачиваем модуль
+                    $updateService = $this->getServiceFactory()->getUpdateService();
+                    $download_result = $updateService->downloadModule($server_url, $module_code, $version, $api_key);
+                    
+                    if (!$download_result['success']) {
+                        $json['error'] = 'Ошибка загрузки модуля: ' . ($download_result['error'] ?? 'Неизвестная ошибка');
+                    } else {
+                        // Устанавливаем модуль
+                        $installService = $this->getServiceFactory()->getInstallService();
+                        $install_result = $installService->installModule($download_result['file_path'], $module_code);
+                        
+                        if ($install_result === true) {
+                            $json['success'] = sprintf('Модуль %s успешно установлен', $module_code);
+                            
+                            // Очищаем кеш
+                            $this->cache->delete('*');
+                            
+                            $this->log->write('GDT Install Modules: Successfully installed module ' . $module_code);
+                        } else {
+                            $json['error'] = is_string($install_result) ? $install_result : 'Ошибка установки модуля';
+                            $this->log->write('GDT Install Modules: Error installing module ' . $module_code . ': ' . $json['error']);
+                        }
+                        
+                        // Удаляем временный файл
+                        if (file_exists($download_result['file_path'])) {
+                            @unlink($download_result['file_path']);
+                        }
+                    }
                 }
             } catch (Exception $e) {
-                $json['error'] = 'Ошибка установки: ' . $e->getMessage();
+                $json['error'] = 'Ошибка: ' . $e->getMessage();
+                $this->log->write('GDT Install Modules error: ' . $e->getMessage());
             }
         }
         
         $this->response->addHeader('Content-Type: application/json');
         $this->response->setOutput(json_encode($json));
-    }
-    
-    /**
-     * Помечает установленные модули в списке
-     * 
-     * @param array $modules Список модулей с сервера
-     * @param object $manager Менеджер модулей
-     * @return array Модули с флагом installed
-     */
-    private function markInstalledModules($modules, $manager) {
-        // Получаем список установленных модулей
-        $installed_modules = $manager->getInstalledModules();
-        
-        // Создаем карту установленных модулей для быстрого поиска
-        $installed_map = array();
-        foreach ($installed_modules as $installed) {
-            if (isset($installed['code'])) {
-                $installed_map[$installed['code']] = array(
-                    'version' => isset($installed['version']) ? $installed['version'] : '0.0.0',
-                    'name' => isset($installed['name']) ? $installed['name'] : $installed['code']
-                );
-            }
-        }
-        
-        // Добавляем флаг installed к каждому модулю
-        foreach ($modules as &$module) {
-            if (isset($module['code']) && isset($installed_map[$module['code']])) {
-                $module['installed'] = true;
-                $module['installed_version'] = $installed_map[$module['code']]['version'];
-                
-                // Проверяем, доступно ли обновление
-                if (isset($module['version'])) {
-                    $module['update_available'] = version_compare($module['version'], $installed_map[$module['code']]['version'], '>');
-                } else {
-                    $module['update_available'] = false;
-                }
-            } else {
-                $module['installed'] = false;
-                $module['installed_version'] = null;
-                $module['update_available'] = false;
-            }
-        }
-        
-        return $modules;
     }
 }

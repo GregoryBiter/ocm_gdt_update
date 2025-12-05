@@ -21,6 +21,7 @@
         "admin/language/uk-ua/extension/module/gdt_install_modules.php",
         "admin/language/uk-ua/extension/module/gdt_updater.php",
         "admin/model/extension/module/gdt_updater.php",
+        "admin/model/extension/module/gdtmodules.php",
         "admin/view/template/extension/dashboard/gdt_updater.twig",
         "admin/view/template/extension/dashboard/gdt_updater_form.twig",
         "admin/view/template/extension/dashboard/gdt_updater_info.twig",
@@ -31,6 +32,13 @@
         "system/gdt_update.ocmod.xml",
         "system/library/gbitstudio/modules/installer.php",
         "system/library/gbitstudio/modules/manager.php",
-        "system/library/gbitstudio/modules/tools.php"
+        "system/library/gbitstudio/modules/services/autoupdateservice.php",
+        "system/library/gbitstudio/modules/services/dashboardservice.php",
+        "system/library/gbitstudio/modules/services/installservice.php",
+        "system/library/gbitstudio/modules/services/modulecatalogservice.php",
+        "system/library/gbitstudio/modules/services/moduleservice.php",
+        "system/library/gbitstudio/modules/services/updateservice.php",
+        "system/library/gbitstudio/modules/tools.php",
+        "system/library/gbitstudio/modules/servicefactory.php"
     ]
 }

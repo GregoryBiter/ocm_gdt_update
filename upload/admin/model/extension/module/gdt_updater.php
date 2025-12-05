@@ -2,142 +2,256 @@
 class ModelExtensionModuleGdtUpdater extends Model {
     
     /**
+     * Отримує фабрику сервісів
+     * 
+     * @return \Gbitstudio\Modules\ServiceFactory
+     */
+    private function getServiceFactory() {
+        if (!$this->registry->has('gb_modules')) {
+            $this->registry->set('gb_modules', new \Gbitstudio\Modules\ServiceFactory($this->registry));
+        }
+        
+        return $this->registry->get('gb_modules');
+    }
+    
+    /**
+     * Мігрує дані з старої таблиці gdt_modules в opencart-module.json файли
+     * 
+     * @return array ['migrated' => int, 'errors' => array]
+     */
+    public function migrateFromDatabaseToJson() {
+        $result = ['migrated' => 0, 'errors' => []];
+        
+        try {
+            // Перевіряємо чи існує таблиця
+            $table_check = $this->db->query("SHOW TABLES LIKE 'gdt_modules'");
+            if ($table_check->num_rows == 0) {
+                $this->log->write('GDT Module Manager: gdt_modules table does not exist, migration not needed');
+                return $result;
+            }
+            
+            // Отримуємо всі модулі з таблиці
+            $query = "SELECT * FROM `gdt_modules`";
+            $modules_result = $this->db->query($query);
+            
+            if ($modules_result->num_rows == 0) {
+                $this->log->write('GDT Module Manager: No modules to migrate');
+                // Видаляємо порожню таблицю
+                $this->db->query("DROP TABLE IF EXISTS `gdt_modules`");
+                return $result;
+            }
+            
+            foreach ($modules_result->rows as $row) {
+                try {
+                    $module_data = json_decode($row['data'], true);
+                    if (!$module_data || !isset($module_data['code'])) {
+                        $result['errors'][] = 'Invalid module data in row ' . $row['id'];
+                        continue;
+                    }
+                    
+                    $code = $module_data['code'];
+                    $module_dir = DIR_SYSTEM . 'module/' . $code . '/';
+                    
+                    // Створюємо папку якщо не існує
+                    if (!is_dir($module_dir)) {
+                        mkdir($module_dir, 0755, true);
+                    }
+                    
+                    // Готуємо дані для JSON
+                    $json_data = [
+                        'code' => $code,
+                        'module_name' => $module_data['module_name'] ?? $module_data['name'] ?? $code,
+                        'version' => $module_data['version'] ?? '1.0.0',
+                        'creator_name' => $module_data['creator_name'] ?? $module_data['author'] ?? 'Unknown',
+                        'creator_email' => $module_data['creator_email'] ?? '',
+                        'description' => $module_data['description'] ?? '',
+                        'controller' => $module_data['controller'] ?? '',
+                        'provider' => $module_data['provider'] ?? '',
+                        'author_url' => $module_data['author_url'] ?? $module_data['link'] ?? '',
+                        'files' => $module_data['files'] ?? []
+                    ];
+                    
+                    // Зберігаємо в JSON файл
+                    $json_file = $module_dir . 'opencart-module.json';
+                    $json_content = json_encode($json_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    
+                    if (file_put_contents($json_file, $json_content)) {
+                        $result['migrated']++;
+                        $this->log->write('GDT Module Manager: Migrated module ' . $code . ' to ' . $json_file);
+                    } else {
+                        $result['errors'][] = 'Failed to write JSON file for module ' . $code;
+                    }
+                } catch (Exception $e) {
+                    $result['errors'][] = 'Error migrating module: ' . $e->getMessage();
+                }
+            }
+            
+            // Після успішної міграції видаляємо таблицю
+            if (empty($result['errors'])) {
+                $this->db->query("DROP TABLE IF EXISTS `gdt_modules`");
+                $this->log->write('GDT Module Manager: Dropped gdt_modules table after successful migration');
+            } else {
+                $this->log->write('GDT Module Manager: Migration completed with errors, table not dropped');
+            }
+            
+        } catch (Exception $e) {
+            $result['errors'][] = 'Migration error: ' . $e->getMessage();
+            $this->log->write('GDT Module Manager: Migration error: ' . $e->getMessage());
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * @deprecated Використовуйте тільки для міграції
+     * @return array
+     */
+    public function getModulesFromOpenCartModifications() {
+        try {
+            $table_exists_query = "SHOW TABLES LIKE '" . DB_PREFIX . "modification'";
+            $table_result = $this->db->query($table_exists_query);
+            
+            if ($table_result->num_rows > 0) {
+                $query = "SELECT * FROM `" . DB_PREFIX . "modification` WHERE `status` = 1";
+                $result = $this->db->query($query);
+                
+                $modules = [];
+                if ($result->num_rows > 0) {
+                    foreach ($result->rows as $row) {
+                        $modules[] = [
+                            'code' => $row['code'],
+                            'name' => $row['name'],
+                            'version' => isset($row['version']) ? $row['version'] : '1.0.0',
+                            'author' => isset($row['author']) ? $row['author'] : 'Unknown',
+                            'link' => isset($row['link']) ? $row['link'] : '',
+                            'description' => isset($row['xml']) ? $this->extractDescription($row['xml']) : '',
+                            'source' => 'opencart_modification',
+                            'modification_id' => $row['modification_id'],
+                            'date_added' => isset($row['date_added']) ? $row['date_added'] : '',
+                        ];
+                    }
+                }
+                return $modules;
+            }
+        } catch (Exception $e) {
+            $this->log->write('GDT Module Manager: Error getting OpenCart modifications: ' . $e->getMessage());
+        }
+        
+        return [];
+    }
+    
+    /**
+     * @deprecated Використовуйте тільки для міграції
+     * @param string $code
+     * @return array|null
+     */
+    public function getModuleFromOpenCartModifications($code) {
+        try {
+            $table_exists_query = "SHOW TABLES LIKE '" . DB_PREFIX . "modification'";
+            $table_result = $this->db->query($table_exists_query);
+            
+            if ($table_result->num_rows > 0) {
+                $query = "SELECT * FROM `" . DB_PREFIX . "modification` WHERE `code` = '" . $this->db->escape($code) . "' AND `status` = 1 LIMIT 1";
+                $result = $this->db->query($query);
+                
+                if ($result->num_rows > 0) {
+                    $row = $result->row;
+                    return [
+                        'code' => $row['code'],
+                        'name' => $row['name'],
+                        'version' => isset($row['version']) ? $row['version'] : '1.0.0',
+                        'author' => isset($row['author']) ? $row['author'] : 'Unknown',
+                        'link' => isset($row['link']) ? $row['link'] : '',
+                        'description' => isset($row['xml']) ? $this->extractDescription($row['xml']) : '',
+                        'source' => 'opencart_modification',
+                        'modification_id' => $row['modification_id'],
+                        'date_added' => isset($row['date_added']) ? $row['date_added'] : '',
+                    ];
+                }
+            }
+        } catch (Exception $e) {
+            $this->log->write('GDT Module Manager: Error getting OpenCart modification by code: ' . $e->getMessage());
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Отримує модулі з бази даних (DEPRECATED)
+     * 
+     * @return array
+     */
+    public function getModulesFromDatabase() {
+        $modules = [];
+        
+        try {
+            $query = "SELECT * FROM `gdt_modules`";
+            $result = $this->db->query($query);
+            
+            if ($result->num_rows > 0) {
+                foreach ($result->rows as $row) {
+                    $module_data = json_decode($row['data'], true);
+                    if ($module_data && isset($module_data['code'])) {
+                        $modules[] = $module_data;
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            $this->log->write('GDT Module Manager: gdt_modules table not available (deprecated): ' . $e->getMessage());
+        }
+        
+        return $modules;
+    }
+    
+    /**
+     * Отримує модуль з бази даних за кодом (DEPRECATED)
+     * 
+     * @param string $code
+     * @return array|null
+     */
+    public function getModuleFromDatabase($code) {
+        try {
+            $query = "SELECT * FROM `gdt_modules` WHERE `module_code` = '" . $this->db->escape($code) . "' LIMIT 1";
+            $result = $this->db->query($query);
+            
+            if ($result->num_rows > 0) {
+                $module_data = json_decode($result->row['data'], true);
+                if ($module_data) {
+                    return $module_data;
+                }
+            }
+        } catch (Exception $e) {
+            $this->log->write('GDT Module Manager: Error getting module from database: ' . $e->getMessage());
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Витягує опис з XML
+     * 
+     * @param string $xml
+     * @return string
+     */
+    private function extractDescription($xml) {
+        try {
+            $dom = new DOMDocument('1.0', 'UTF-8');
+            $dom->loadXml($xml);
+            $description = $dom->getElementsByTagName('description')->item(0);
+            return $description ? $description->nodeValue : '';
+        } catch (Exception $e) {
+            return '';
+        }
+    }
+    
+    /**
      * Автоматическая проверка и запуск обновления модулей при загрузке dashboard
      */
     public function autoCheckUpdate() {
-        $this->log->write('GDT Updater Auto: autoCheckUpdate method called');
+        $autoUpdateService = $this->getServiceFactory()->getAutoUpdateService();
+        $result = $autoUpdateService->autoCheckAndUpdate();
         
-        $manager = $this->initializeManager();
-        if (!$manager) {
-            return;
-        }
-
-        $installed_modules = $this->getInstalledModulesForAutoUpdate($manager);
-        if (empty($installed_modules)) {
-            return;
-        }
-
-        $server_url = $this->getServerUrl();
-        if (empty($server_url)) {
-            $this->log->write('GDT Updater Auto: No server URL configured');
-            return;
-        }
-
-        $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
-        $auto_update_modules = $this->config->get('module_gdt_updater_auto_modules') ?: array();
-        
-        $this->log->write('GDT Updater Auto: Auto-update enabled for modules: ' . implode(', ', $auto_update_modules));
-
-        $result = $this->processAutoUpdates($manager, $installed_modules, $auto_update_modules, $server_url, $api_key);
-        
-        $this->handleAutoUpdateResults($result, $manager);
-        $this->cache->set('gdt_updater_last_auto_check', date('Y-m-d'));
-    }
-    
-    /**
-     * Инициализирует менеджер модулей
-     */
-    private function initializeManager() {
-        $this->load->library('gbitstudio/modules/manager');
-        return new \Gbitstudio\Modules\Manager($this->registry);
-    }
-    
-    /**
-     * Получает список установленных модулей для автообновления
-     */
-    private function getInstalledModulesForAutoUpdate($manager) {
-        $installed_modules = $manager->getInstalledModules();
-        
-        if (empty($installed_modules)) {
-            $this->log->write('GDT Updater Auto: No installed modules found');
-        }
-        
-        return $installed_modules;
-    }
-    
-    /**
-     * Получает URL сервера обновлений
-     */
-    private function getServerUrl() {
-        $server_url = $this->config->get('module_gdt_updater_server');
-        
-        if (empty($server_url)) {
-            $docker_server_url = getenv('GDT_UPDATE_SERVER');
-            if ($docker_server_url) {
-                return $docker_server_url;
-            }
-            
-            if (defined('HTTP_SERVER')) {
-                return HTTP_SERVER . 'ocm_gdt_update/server';
-            }
-        }
-        
-        return $server_url;
-    }
-    
-    /**
-     * Обрабатывает автообновления для модулей
-     */
-    private function processAutoUpdates($manager, $installed_modules, $auto_update_modules, $server_url, $api_key) {
-        $updated_modules = array();
-        $errors = array();
-
-        foreach ($installed_modules as $module) {
-            if (!in_array($module['code'], $auto_update_modules)) {
-                continue;
-            }
-
-            $update_result = $this->tryAutoUpdateModule($manager, $module, $server_url, $api_key);
-            
-            if ($update_result['success']) {
-                $updated_modules[] = $module['module_name'] ?? $module['name'] ?? $module['code'];
-            } elseif ($update_result['error']) {
-                $errors[] = $module['code'] . ': ' . $update_result['error'];
-            }
-        }
-
-        return array(
-            'updated' => $updated_modules,
-            'errors' => $errors
-        );
-    }
-    
-    /**
-     * Пытается выполнить автообновление модуля
-     */
-    private function tryAutoUpdateModule($manager, $module, $server_url, $api_key) {
-        try {
-            $update_info = $manager->checkModuleUpdate($server_url, $module, '', $api_key);
-            
-            if (!$update_info || isset($update_info['error'])) {
-                return array('success' => false, 'error' => null);
-            }
-            
-            $this->log->write('GDT Updater Auto: Starting auto-update for module ' . $module['code'] . 
-                ' from version ' . $module['version'] . ' to ' . $update_info['version']);
-            
-            $result = $manager->downloadAndInstallUpdate($server_url, $module, $update_info, '', $api_key, true);
-            
-            if ($result === true) {
-                $this->log->write('GDT Updater Auto: Successfully auto-updated module ' . $module['code'] . 
-                    ' to version ' . $update_info['version'] . ' via OpenCart process');
-                return array('success' => true, 'error' => null);
-            } else {
-                $this->log->write('GDT Updater Auto Error: Failed to auto-update module ' . $module['code'] . ' - ' . $result);
-                return array('success' => false, 'error' => $result);
-            }
-        } catch (Exception $e) {
-            $this->log->write('GDT Updater Auto Exception: ' . $e->getMessage());
-            return array('success' => false, 'error' => $e->getMessage());
-        }
-    }
-    
-    /**
-     * Обрабатывает результаты автообновления
-     */
-    private function handleAutoUpdateResults($result, $manager) {
         if (!empty($result['updated'])) {
-            $manager->clearCache();
             $this->session->data['success'] = 'Автообновлены модули: ' . implode(', ', $result['updated']);
         }
 
@@ -154,37 +268,8 @@ class ModelExtensionModuleGdtUpdater extends Model {
             return ['available' => false];
         }
 
-        // Загружаем менеджер модулей
-        $this->load->library('gbitstudio/modules/manager');
-        $manager = new \Gbitstudio\Modules\Manager($this->registry);
-
-        // Получаем информацию о модуле
-        $module = $manager->getModuleByCode($module_code);
-        if (!$module) {
-            return ['available' => false];
-        }
-
-        // Получаем URL сервера обновлений
-        $server_url = $this->config->get('module_gdt_updater_server');
-        if (empty($server_url)) {
-            return ['available' => false];
-        }
-
-        $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
-        
-        // Проверяем обновления
-        $update_info = $manager->checkModuleUpdate($server_url, $module, '', $api_key);
-        
-        if ($update_info && !isset($update_info['error'])) {
-            return [
-                'available' => true,
-                'current_version' => $module['version'],
-                'new_version' => $update_info['version'],
-                'module_name' => $module['module_name'] ?? $module['name']
-            ];
-        }
-        
-        return ['available' => false];
+        $autoUpdateService = $this->getServiceFactory()->getAutoUpdateService();
+        return $autoUpdateService->checkForUpdate($module_code);
     }
 
     /**
@@ -195,44 +280,7 @@ class ModelExtensionModuleGdtUpdater extends Model {
             return 'Не указан код модуля';
         }
 
-        // Загружаем менеджер модулей
-        $this->load->library('gbitstudio/modules/manager');
-        $manager = new \Gbitstudio\Modules\Manager($this->registry);
-
-        // Получаем информацию о модуле
-        $module = $manager->getModuleByCode($module_code);
-        if (!$module) {
-            return 'Модуль не найден';
-        }
-
-        // Если информация об обновлении не передана, получаем её
-        if (!$update_info) {
-            $server_url = $this->config->get('module_gdt_updater_server');
-            if (empty($server_url)) {
-                return 'Не настроен сервер обновлений';
-            }
-
-            $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
-            $update_info = $manager->checkModuleUpdate($server_url, $module, '', $api_key);
-            
-            if (!$update_info || isset($update_info['error'])) {
-                return 'Обновление не найдено или ошибка сервера';
-            }
-        }
-
-        try {
-            // Выполняем обновление через встроенный процесс OpenCart
-            $result = $manager->downloadAndInstallUpdate($server_url, $module, $update_info, '', $api_key, true);
-            
-            if ($result === true) {
-                // Очищаем кэш
-                $manager->clearCache();
-                return true;
-            } else {
-                return $result;
-            }
-        } catch (Exception $e) {
-            return 'Ошибка при обновлении: ' . $e->getMessage();
-        }
+        $autoUpdateService = $this->getServiceFactory()->getAutoUpdateService();
+        return $autoUpdateService->performModuleUpdate($module_code, $update_info);
     }
 }

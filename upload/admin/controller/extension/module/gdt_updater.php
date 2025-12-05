@@ -2,15 +2,18 @@
 class ControllerExtensionModuleGdtUpdater extends Controller
 {
     private $error = array();
-    private $manager;
 
-    public function __construct($registry)
-    {
-        parent::__construct($registry);
-
-        // Загружаем объединенный сервис управления модулями
-        $this->load->library('gbitstudio/modules/manager');
-        $this->manager = new \Gbitstudio\Modules\Manager($registry);
+    /**
+     * Отримує фабрику сервісів
+     * 
+     * @return \Gbitstudio\Modules\ServiceFactory
+     */
+    private function getServiceFactory() {
+        if (!$this->registry->has('gb_modules')) {
+            $this->registry->set('gb_modules', new \Gbitstudio\Modules\ServiceFactory($this->registry));
+        }
+        
+        return $this->registry->get('gb_modules');
     }
 
     public function index()
@@ -92,7 +95,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
     private function getModulesData()
     {
         // Получаем список установленных модулей
-        $installed_modules = $this->manager->getInstalledModules();
+        $installed_modules = $this->getServiceFactory()->getModuleService()->getInstalledModules();
 
         if (empty($installed_modules)) {
             return array();
@@ -142,7 +145,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                 $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
 
                 // Проверяем обновления
-                $update_info = $this->manager->checkModuleUpdate($server_url, $module, '', $api_key);
+                $update_info = $this->getServiceFactory()->getUpdateService()->checkModuleUpdate($server_url, $module, $api_key);
 
                 if ($update_info && !isset($update_info['error'])) {
                     $module_data['has_update'] = true;
@@ -210,7 +213,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $json = array();
 
         // Получаем список установленных модулей
-        $installed_modules = $this->manager->getInstalledModules();
+        $installed_modules = $this->getServiceFactory()->getModuleService()->getInstalledModules();
 
         if (empty($installed_modules)) {
             $json['error'] = $this->language->get('error_no_modules');
@@ -245,7 +248,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                 $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
 
                 // Проверяем обновления
-                $update_info = $this->manager->checkModuleUpdate($server_url, $module, '', $api_key);
+                $update_info = $this->getServiceFactory()->getUpdateService()->checkModuleUpdate($server_url, $module, $api_key);
 
                 if (is_array($update_info) && isset($update_info['error'])) {
                     // Обрабатываем ошибки curl/http
@@ -298,7 +301,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
             $json['error'] = $this->language->get('error_server');
         } else {
             // Получаем список установленных модулей
-            $modules = $this->manager->getInstalledModules();
+            $modules = $this->getServiceFactory()->getModuleService()->getInstalledModules();
 
             if (!empty($modules)) {
                 $json['modules'] = array();
@@ -307,7 +310,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                     // Получаем API-ключ
                     $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
 
-                    $update_info = $this->manager->checkModuleUpdate($server_url, $module, '', $api_key);
+                    $update_info = $this->getServiceFactory()->getUpdateService()->checkModuleUpdate($server_url, $module, $api_key);
                     $this->log->write('GDT Updater: Checking updates for module ' . $module['code'] . ' - Current version: ' . $module['version']);
                     $this->log->write('GDT Updater: Update info: ' . json_encode($update_info), true);
 
@@ -381,13 +384,13 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                 $json['error'] = $this->language->get('error_server');
             } else {
                 // Получаем информацию о модуле
-                $module = $this->manager->getModuleByCode($code);
+                $module = $this->getServiceFactory()->getModuleService()->getModuleByCode($code);
 
                 if ($module) {
                     // Получаем API-ключ
                     $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
                     // Проверяем обновление
-                    $update_info = $this->manager->checkModuleUpdate($server_url, $module, '', $api_key);
+                    $update_info = $this->getServiceFactory()->getUpdateService()->checkModuleUpdate($server_url, $module, $api_key);
         
 
                     // Проверяем на ошибки curl
@@ -403,14 +406,19 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                         
                         try {
                             // Скачиваем и устанавливаем обновление через встроенный процесс OpenCart
-                            $result = $this->manager->downloadAndInstallUpdate($server_url, $module, $update_info, '', $api_key, true);
+                            $download_result = $this->getServiceFactory()->getUpdateService()->downloadModule($server_url, $module['code'], $update_info['version'], $api_key);
+                            if ($download_result['success']) {
+                                $result = $this->getServiceFactory()->getInstallService()->installModule($download_result['file_path'], $module['code']);
+                            } else {
+                                $result = $download_result['error'] ?? 'Ошибка загрузки модуля';
+                            }
 
                             if ($result === true) {
                                 // Очищаем все кэши OpenCart
-                                $this->manager->clearCache();
+                                $this->cache->delete('*');
                                 
                                 // Проверяем, что версия действительно обновилась
-                                $updated_module = $this->manager->getModuleByCode($code);
+                                $updated_module = $this->getServiceFactory()->getModuleService()->getModuleByCode($code);
                                 if ($updated_module && $updated_module['version'] === $update_info['version']) {
                                     $json['success'] = sprintf($this->language->get('text_update_success'), $module['name'] ?? $module['module_name']) . ' (v' . $update_info['version'] . ') через встроенный процесс OpenCart';
                                 } else {
@@ -571,19 +579,23 @@ class ControllerExtensionModuleGdtUpdater extends Controller
 
             try {
                 // Проверяем, что модуль существует
-                $module = $this->manager->getModuleByCode($code);
+                $module = $this->getServiceFactory()->getModuleService()->getModuleByCode($code);
                 if (!$module) {
                     $json['error'] = 'Модуль ' . $code . ' не найден';
                 } else {
                     // Логируем начало процесса удаления
                     $this->log->write('GDT Updater: Starting deletion for module ' . $code);
                     
-                    // Удаляем модуль
-                    $result = $this->manager->uninstall($code);
-
-                    if ($result === true) {
+                    // Удаляем модуль - функціональність потрібно додати в InstallService
+                    // TODO: Додати метод uninstallModule в InstallService
+                    $json['error'] = 'Функция удаления модуля временно недоступна. Используйте стандартный менеджер расширений OpenCart.';
+                    $this->response->addHeader('Content-Type: application/json');
+                    $this->response->setOutput(json_encode($json));
+                    return;
+                    
+                    if (false) {
                         // Очищаем все кэши OpenCart
-                        $this->manager->clearCache();
+                        $this->cache->delete('*');
                         
                         $json['success'] = sprintf('Модуль %s успешно удален', $module['module_name'] ?? $module['name'] ?? $code);
                         
@@ -623,7 +635,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
             foreach ($modules as $code) {
                 try {
                     // Проверяем, что модуль существует
-                    $module = $this->manager->getModuleByCode($code);
+                    $module = $this->getServiceFactory()->getModuleService()->getModuleByCode($code);
                     if (!$module) {
                         $errors[] = 'Модуль ' . $code . ' не найден';
                         continue;
@@ -632,10 +644,12 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                     // Логируем начало процесса удаления
                     $this->log->write('GDT Updater: Starting deletion for module ' . $code);
                     
-                    // Удаляем модуль
-                    $result = $this->manager->uninstall($code);
-
-                    if ($result === true) {
+                    // Удаляем модуль - функция временно недоступна
+                    // TODO: Добавить метод uninstallModule в InstallService
+                    $errors[] = $code . ': Функция удаления временно недоступна. Используйте стандартный менеджер расширений OpenCart.';
+                    continue;
+                    
+                    if (false) {
                         $deleted[] = $module['module_name'] ?? $module['name'] ?? $code;
                         $this->log->write('GDT Updater: Successfully deleted module ' . $code);
                     } else {
@@ -649,7 +663,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
 
             // Очищаем все кэши OpenCart после всех операций
             if (!empty($deleted)) {
-                $this->manager->clearCache();
+                $this->cache->delete('*');
             }
 
             if (!empty($deleted) && empty($errors)) {
@@ -674,26 +688,25 @@ class ControllerExtensionModuleGdtUpdater extends Controller
      * Установка модуля
      */
     public function install() {
-        // Создаем таблицу для хранения модулей
-        $this->manager->createModulesTable();
-
+        // Виконуємо міграцію даних з gdt_modules в opencart-module.json
+        $this->load->model('extension/module/gdt_updater');
+        $migration_result = $this->model_extension_module_gdt_updater->migrateFromDatabaseToJson();
+        
+        if ($migration_result['migrated'] > 0) {
+            $this->log->write('GDT Updater: Migrated ' . $migration_result['migrated'] . ' modules to opencart-module.json');
+        }
+        
+        if (!empty($migration_result['errors'])) {
+            $this->log->write('GDT Updater: Migration errors: ' . implode('; ', $migration_result['errors']));
+        }
+        
         // Добавляем события
         $this->load->model('setting/event');
         $this->model_setting_event->addEvent('gdt_updater_auto_check', 'admin/controller/common/dashboard/before', 'extension/module/gdt_updater/autoCheckEvent');
         $this->model_setting_event->addEvent('auto_update_menu', 'admin/view/common/column_left/before', 'extension/module/gdt_updater/menuAdmin');
-        
-        //получаем json 
-        $gdt_updater_json = $this->manager->getJson();
-        if ($gdt_updater_json) {
-        $this->manager->saveModuleToDatabase(
-            'gdt_updater', 
-            $gdt_updater_json['version'] ?? '1.0.0', 
-            $gdt_updater_json
-        );
-    }
 
         // Логируем успешную установку
-        $this->log->write('GDT Updater: Таблица для хранения модулей успешно создана и события добавлены.');
+        $this->log->write('GDT Updater: События добавлены, модуль установлен.');
     }
 
     public function uninstall()

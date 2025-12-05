@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/9.5/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         verbose="true"
+         failOnWarning="true"
+         failOnRisky="true"
+         beStrictAboutOutputDuringTests="true"
+         beStrictAboutTestsThatDoNotTestAnything="true"
+         convertErrorsToExceptions="true"
+         convertNoticesToExceptions="true"
+         convertWarningsToExceptions="true"
+         processIsolation="false"
+         stopOnFailure="false">
+    <testsuites>
+        <testsuite name="Unit Tests">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Services Tests">
+            <directory>tests/Unit/Services</directory>
+        </testsuite>
+        <testsuite name="Controllers Tests">
+            <directory>tests/Unit/Controllers</directory>
+        </testsuite>
+    </testsuites>
+    
+    <coverage processUncoveredFiles="true">
+        <include>
+            <directory suffix=".php">upload/system/library/gbitstudio/modules</directory>
+            <directory suffix=".php">upload/admin/controller/extension</directory>
+        </include>
+        <exclude>
+            <directory>upload/system/library/gbitstudio/modules/vendor</directory>
+        </exclude>
+        <report>
+            <html outputDirectory="coverage"/>
+            <text outputFile="php://stdout" showUncoveredFiles="true"/>
+        </report>
+    </coverage>
+    
+    <php>
+        <ini name="display_errors" value="1"/>
+        <ini name="error_reporting" value="-1"/>
+        <ini name="memory_limit" value="-1"/>
+        
+        <!-- Define constants for OpenCart -->
+        <const name="DIR_APPLICATION" value="/tmp/opencart/admin/"/>
+        <const name="DIR_CATALOG" value="/tmp/opencart/catalog/"/>
+        <const name="DIR_IMAGE" value="/tmp/opencart/image/"/>
+        <const name="DIR_SYSTEM" value="/tmp/opencart/system/"/>
+        <const name="DIR_STORAGE" value="/tmp/opencart/storage/"/>
+        <const name="DIR_UPLOAD" value="/tmp/opencart/storage/upload/"/>
+    </php>
+</phpunit>
