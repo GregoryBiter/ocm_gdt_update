@@ -153,72 +153,9 @@ class InstallService {
             }
         }
 
-        // Список дозволених директорій для запису
-        $allowed = array(
-            'admin/controller/extension/',
-            'admin/language/',
-            'admin/model/extension/',
-            'admin/view/image/',
-            'admin/view/javascript/',
-            'admin/view/stylesheet/',
-            'admin/view/template/extension/',
-            'catalog/controller/extension/',
-            'catalog/language/',
-            'catalog/model/extension/',
-            'catalog/view/javascript/',
-            'catalog/view/theme/',
-            'system/config/',
-            'system/library/',
-            'system/',
-            'system/modules/',
-            'image/catalog/'
-        );
-
-        // Спочатку робимо перевірки безпеки
-        foreach ($files as $file) {
-            $destination = str_replace('\\', '/', substr($file, strlen($directory . 'upload/')));
-
-            $safe = false;
-
-            foreach ($allowed as $value) {
-                if (strlen($destination) < strlen($value) && substr($value, 0, strlen($destination)) == $destination) {
-                    $safe = true;
-                    break;
-                }
-
-                if (strlen($destination) > strlen($value) && substr($destination, 0, strlen($value)) == $value) {
-                    $safe = true;
-                    break;
-                }
-            }
-            
-            if ($safe) {
-                // Перевіряємо чи існує місце призначення
-                if (substr($destination, 0, 5) == 'admin') {
-                    $destination = DIR_APPLICATION . substr($destination, 6);
-                }
-
-                if (substr($destination, 0, 7) == 'catalog') {
-                    $destination = DIR_CATALOG . substr($destination, 8);
-                }
-
-                if (substr($destination, 0, 5) == 'image') {
-                    $destination = DIR_IMAGE . substr($destination, 6);
-                }
-
-                if (substr($destination, 0, 6) == 'system') {
-                    $destination = DIR_SYSTEM . substr($destination, 7);
-                }
-            } else {
-                $error = sprintf('Forbidden directory: %s', $destination);
-                if ($this->log) {
-                    $this->log->write('GDT Install Service: ' . $error);
-                }
-                return $error;
-            }
-        }
+        // Без обмежень - дозволяємо встановлення в будь-яку директорію
         
-        // Якщо перевірки пройдені - переміщуємо файли
+        // Переміщуємо файли
         $this->registry->get('load')->model('setting/extension');
         $model = $this->registry->get('model_setting_extension');
 
@@ -229,18 +166,17 @@ class InstallService {
 
             if (substr($destination, 0, 5) == 'admin') {
                 $path = DIR_APPLICATION . substr($destination, 6);
-            }
-
-            if (substr($destination, 0, 7) == 'catalog') {
+            } elseif (substr($destination, 0, 7) == 'catalog') {
                 $path = DIR_CATALOG . substr($destination, 8);
-            }
-
-            if (substr($destination, 0, 5) == 'image') {
+            } elseif (substr($destination, 0, 5) == 'image') {
                 $path = DIR_IMAGE . substr($destination, 6);
-            }
-
-            if (substr($destination, 0, 6) == 'system') {
+            } elseif (substr($destination, 0, 6) == 'system') {
                 $path = DIR_SYSTEM . substr($destination, 7);
+            } else {
+                // Файли в корені - визначаємо корінь через DIR_APPLICATION
+                // DIR_APPLICATION це /path/to/opencart/admin/ або /path/to/opencart/
+                $root = rtrim(str_replace('admin/', '', rtrim(DIR_APPLICATION, '/')), '/') . '/';
+                $path = $root . $destination;
             }
 
             if (is_dir($file) && !is_dir($path)) {

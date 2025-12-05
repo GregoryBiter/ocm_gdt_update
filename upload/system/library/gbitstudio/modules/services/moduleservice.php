@@ -45,7 +45,7 @@ class ModuleService {
         $modules = [];
         
         try {
-            $modules_dir = constant('DIR_SYSTEM') . 'module/';
+            $modules_dir = constant('DIR_SYSTEM') . 'modules/';
             
             if (!is_dir($modules_dir)) {
                 return $modules;
@@ -82,7 +82,7 @@ class ModuleService {
      */
     private function getModuleFromJsonFiles($code) {
         try {
-            $json_file = constant('DIR_SYSTEM') . 'module/' . $code . '/opencart-module.json';
+            $json_file = constant('DIR_SYSTEM') . 'modules/' . $code . '/opencart-module.json';
             
             if (file_exists($json_file)) {
                 return $this->parseJsonFile($json_file, $code);
