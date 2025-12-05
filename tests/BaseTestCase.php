@@ -40,6 +40,10 @@ abstract class BaseTestCase extends TestCase
         
         $registry->shouldReceive('get')->with('load')->andReturn($load);
         
+        // Додаємо mock для log
+        $log = $this->createLogMock();
+        $registry->shouldReceive('get')->with('log')->andReturn($log);
+        
         return $registry;
     }
 
