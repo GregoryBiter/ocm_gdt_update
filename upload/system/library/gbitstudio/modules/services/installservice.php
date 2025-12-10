@@ -320,7 +320,7 @@ class InstallService {
             $module_data = json_decode($json_content, true);
             
             if (json_last_error() !== JSON_ERROR_NONE) {
-                    LoggerService::write('GDT Install Service: Invalid JSON in opencart-module.json: ' . json_last_error_msg());
+                LoggerService::error('Invalid JSON in opencart-module.json: ' . json_last_error_msg(), 'InstallService');
                 return;
             }
             
@@ -346,13 +346,12 @@ class InstallService {
                     $model->addExtensionPath($extension_install_id, 'system/modules/' . $code . '/opencart-module.json');
                 }
                 
-                    LoggerService::write('GDT Install Service: Saved opencart-module.json to ' . $json_target);
+                LoggerService::info('Saved opencart-module.json to ' . $json_target, 'InstallService');
             } else {
                 LoggerService::info('Failed to save opencart-module.json', 'InstallService');
             }
         } catch (\Exception $e) {
-                LoggerService::write('GDT Install Service: Error saving opencart-module.json: ' . $e->getMessage());
-            }
+            LoggerService::error('Error saving opencart-module.json: ' . $e->getMessage(), 'InstallService');
         }
     }
     

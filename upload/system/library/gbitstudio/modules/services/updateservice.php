@@ -6,8 +6,10 @@ namespace Gbitstudio\Modules\Services;
  * Сервіс для перевірки та завантаження оновлень
  */
 class UpdateService {
+    private $registry;
     
     public function __construct(\Registry $registry) {
+        $this->registry = $registry;
     }
     
     /**
@@ -19,7 +21,7 @@ class UpdateService {
      * @return array|bool
      */
     public function checkModuleUpdate($server_url, $module, $api_key = '') {
-        LoggerService::write('GDT Update Service: Checking update for ' . $module['code']);
+        LoggerService::info('Checking update for ' . $module['code'], 'UpdateService');
         
         $url = rtrim($server_url, '/') . '/index.php?route=gdt_update_server/check';
         $post_data = [
@@ -65,7 +67,7 @@ class UpdateService {
             $temp_file = $this->downloadFile($download_url, $post_data);
             
             if ($temp_file) {
-                LoggerService::write('GDT Update Service: Downloaded module to ' . $temp_file);
+                LoggerService::info('Downloaded module to ' . $temp_file, 'UpdateService');
                 return [
                     'success' => true,
                     'file_path' => $temp_file,
@@ -79,7 +81,7 @@ class UpdateService {
                 ];
             }
         } catch (\Exception $e) {
-            LoggerService::write('GDT Update Service: Download error: ' . $e->getMessage());
+            LoggerService::error('Download error: ' . $e->getMessage(), 'UpdateService');
             return [
                 'success' => false,
                 'file_path' => null,
@@ -179,12 +181,12 @@ class UpdateService {
         curl_close($curl);
         
         if ($error) {
-            LoggerService::write('GDT Update Service cURL error: ' . $error);
+            LoggerService::error('cURL error: ' . $error, 'UpdateService');
             return ['error' => 'curl', 'message' => $error];
         }
         
         if ($http_code != 200) {
-            LoggerService::write('GDT Update Service HTTP error: ' . $http_code);
+            LoggerService::error('HTTP error: ' . $http_code, 'UpdateService');
             return ['error' => 'http', 'code' => $http_code];
         }
         
@@ -211,7 +213,7 @@ class UpdateService {
             }
         }
         
-        LoggerService::write('GDT Update Service: No update available for module ' . $module['code']);
+        LoggerService::info('No update available for module ' . $module['code'], 'UpdateService');
         return false;
     }
 }
