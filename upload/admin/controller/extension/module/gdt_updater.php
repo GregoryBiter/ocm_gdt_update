@@ -1,4 +1,5 @@
 <?php
+use \Gbitstudio\Modules\Services\LoggerService;
 class ControllerExtensionModuleGdtUpdater extends Controller
 {
     private $error = array();
@@ -77,7 +78,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         try {
             $data['modules'] = $this->getModulesData();
         } catch (\Exception $e) {
-            $this->log->write('GDT Updater error: ' . $e->getMessage());
+            LoggerService::write('GDT Updater error: ' . $e->getMessage());
             $data['error'] = $this->language->get('error_server');
             $data['modules'] = array();
         }
@@ -311,8 +312,8 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                     $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
 
                     $update_info = $this->getServiceFactory()->getUpdateService()->checkModuleUpdate($server_url, $module, $api_key);
-                    $this->log->write('GDT Updater: Checking updates for module ' . $module['code'] . ' - Current version: ' . $module['version']);
-                    $this->log->write('GDT Updater: Update info: ' . json_encode($update_info), true);
+                    LoggerService::write('GDT Updater: Checking updates for module ' . $module['code'] . ' - Current version: ' . $module['version']);
+                    LoggerService::write('GDT Updater: Update info: ' . json_encode($update_info), true);
 
                     // Проверяем на ошибки curl
                     if (is_array($update_info) && isset($update_info['error'])) {
@@ -402,7 +403,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                         }
                     } else if ($update_info) {
                         // Логируем начало процесса обновления
-                        $this->log->write('GDT Updater: Starting update for module ' . $code . ' from version ' . $module['version'] . ' to ' . $update_info['version']);
+                        LoggerService::write('GDT Updater: Starting update for module ' . $code . ' from version ' . $module['version'] . ' to ' . $update_info['version']);
                         
                         try {
                             // Скачиваем и устанавливаем обновление через встроенный процесс OpenCart
@@ -584,7 +585,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                     $json['error'] = 'Модуль ' . $code . ' не найден';
                 } else {
                     // Логируем начало процесса удаления
-                    $this->log->write('GDT Updater: Starting deletion for module ' . $code);
+                    LoggerService::write('GDT Updater: Starting deletion for module ' . $code);
                     
                     // Удаляем модуль - функціональність потрібно додати в InstallService
                     // TODO: Додати метод uninstallModule в InstallService
@@ -599,14 +600,14 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                         
                         $json['success'] = sprintf('Модуль %s успешно удален', $module['module_name'] ?? $module['name'] ?? $code);
                         
-                        $this->log->write('GDT Updater: Successfully deleted module ' . $code);
+                        LoggerService::write('GDT Updater: Successfully deleted module ' . $code);
                     } else {
                         $json['error'] = is_string($result) ? $result : 'Неизвестная ошибка при удалении модуля';
                     }
                 }
             } catch (Exception $e) {
                 $json['error'] = 'Ошибка при удалении модуля: ' . $e->getMessage();
-                $this->log->write('GDT Updater error: ' . $e->getMessage());
+                LoggerService::write('GDT Updater error: ' . $e->getMessage());
             }
         } else {
             $json['error'] = 'Не указан код модуля для удаления';
@@ -642,7 +643,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                     }
 
                     // Логируем начало процесса удаления
-                    $this->log->write('GDT Updater: Starting deletion for module ' . $code);
+                    LoggerService::write('GDT Updater: Starting deletion for module ' . $code);
                     
                     // Удаляем модуль - функция временно недоступна
                     // TODO: Добавить метод uninstallModule в InstallService
@@ -651,13 +652,13 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                     
                     if (false) {
                         $deleted[] = $module['module_name'] ?? $module['name'] ?? $code;
-                        $this->log->write('GDT Updater: Successfully deleted module ' . $code);
+                        LoggerService::write('GDT Updater: Successfully deleted module ' . $code);
                     } else {
                         $errors[] = $code . ': ' . (is_string($result) ? $result : 'Неизвестная ошибка');
                     }
                 } catch (Exception $e) {
                     $errors[] = $code . ': ' . $e->getMessage();
-                    $this->log->write('GDT Updater error: ' . $e->getMessage());
+                    LoggerService::write('GDT Updater error: ' . $e->getMessage());
                 }
             }
 
@@ -693,11 +694,11 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $migration_result = $this->model_extension_module_gdt_updater->migrateFromDatabaseToJson();
         
         if ($migration_result['migrated'] > 0) {
-            $this->log->write('GDT Updater: Migrated ' . $migration_result['migrated'] . ' modules to opencart-module.json');
+            LoggerService::write('GDT Updater: Migrated ' . $migration_result['migrated'] . ' modules to opencart-module.json');
         }
         
         if (!empty($migration_result['errors'])) {
-            $this->log->write('GDT Updater: Migration errors: ' . implode('; ', $migration_result['errors']));
+            LoggerService::write('GDT Updater: Migration errors: ' . implode('; ', $migration_result['errors']));
         }
         
         // Добавляем события
@@ -706,7 +707,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $this->model_setting_event->addEvent('auto_update_menu', 'admin/view/common/column_left/before', 'extension/module/gdt_updater/menuAdmin');
 
         // Логируем успешную установку
-        $this->log->write('GDT Updater: События добавлены, модуль установлен.');
+        LoggerService::write('GDT Updater: События добавлены, модуль установлен.');
     }
 
     public function uninstall()

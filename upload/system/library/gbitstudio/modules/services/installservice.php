@@ -1,18 +1,16 @@
 <?php
-
 namespace Gbitstudio\Modules\Services;
 
+use \Gbitstudio\Modules\Services\LoggerService;
 /**
  * Сервіс для установки модулів
  * Реалізує логіку встановлення як у OpenCart admin/controller/marketplace/install.php
  */
 class InstallService {
     private $registry;
-    private $log;
     
     public function __construct(\Registry $registry) {
         $this->registry = $registry;
-        $this->log = $registry->get('log');
     }
     
     /**
@@ -23,9 +21,7 @@ class InstallService {
      * @return bool|string true при успіху, рядок з помилкою при невдачі
      */
     public function installModule($zip_file_path, $module_code = '') {
-        if ($this->log) {
-            $this->log->write('GDT Install Service: Starting installation for ' . $module_code);
-        }
+        LoggerService::info('Starting installation for ' . $module_code, 'InstallService');
 
         try {
             if (!file_exists($zip_file_path)) {
@@ -46,9 +42,7 @@ class InstallService {
             $filename = !empty($module_code) ? $module_code . '.ocmod.zip' : basename($zip_file_path);
             $extension_install_id = $model->addExtensionInstall($filename);
             
-            if ($this->log) {
-                $this->log->write('GDT Install Service: Created extension_install_id: ' . $extension_install_id);
-            }
+                LoggerService::write('GDT Install Service: Created extension_install_id: ' . $extension_install_id);
 
             // Етап 1: Розпакування
             $extract_dir = $this->unzipModule($temp_file, $install_token, $upload_dir);
@@ -74,16 +68,12 @@ class InstallService {
             // Етап 5: Очищення
             $this->cleanupInstallation($extract_dir, $temp_file);
 
-            if ($this->log) {
-                $this->log->write('GDT Install Service: Successfully installed module');
-            }
+            LoggerService::info('Successfully installed module', 'InstallService');
 
             return true;
         } catch (\Exception $e) {
             $error = 'Installation error: ' . $e->getMessage();
-            if ($this->log) {
-                $this->log->write('GDT Install Service error: ' . $error);
-            }
+                LoggerService::write('GDT Install Service error: ' . $error);
             return $error;
         }
     }
@@ -107,9 +97,7 @@ class InstallService {
             $zip->extractTo($extract_dir);
             $zip->close();
             
-            if ($this->log) {
-                $this->log->write('GDT Install Service: Module extracted to ' . $extract_dir);
-            }
+                LoggerService::write('GDT Install Service: Module extracted to ' . $extract_dir);
         } else {
             return 'Failed to open ZIP archive';
         }
@@ -131,9 +119,7 @@ class InstallService {
         
         // Перевіряємо наявність папки upload/
         if (!is_dir($directory . 'upload/')) {
-            if ($this->log) {
-                $this->log->write('GDT Install Service: No upload/ directory found');
-            }
+            LoggerService::info('No upload/ directory found', 'InstallService');
             return true;
         }
 
@@ -182,18 +168,14 @@ class InstallService {
             if (is_dir($file) && !is_dir($path)) {
                 if (mkdir($path, 0777)) {
                     $model->addExtensionPath($extension_install_id, $destination);
-                    if ($this->log) {
-                        $this->log->write('GDT Install Service: Created directory: ' . $destination);
-                    }
+                        LoggerService::write('GDT Install Service: Created directory: ' . $destination);
                 }
             }
 
             if (is_file($file)) {
                 if (rename($file, $path)) {
                     $model->addExtensionPath($extension_install_id, $destination);
-                    if ($this->log) {
-                        $this->log->write('GDT Install Service: Moved file: ' . $destination);
-                    }
+                        LoggerService::write('GDT Install Service: Moved file: ' . $destination);
                 }
             }
         }
@@ -260,9 +242,7 @@ class InstallService {
 
             $model->addModification($modification_data);
             
-            if ($this->log) {
-                $this->log->write('GDT Install Service: Added modification ' . $name . ' (' . $code . ')');
-            }
+                LoggerService::write('GDT Install Service: Added modification ' . $name . ' (' . $code . ')');
 
             return true;
         } catch (\Exception $e) {
@@ -332,9 +312,7 @@ class InstallService {
             // Шукаємо opencart-module.json у розпакованому архіві
             $json_source = $extract_dir . '/opencart-module.json';
             if (!file_exists($json_source)) {
-                if ($this->log) {
-                    $this->log->write('GDT Install Service: No opencart-module.json found in module package');
-                }
+                LoggerService::info('No opencart-module.json found in module package', 'InstallService');
                 return;
             }
             
@@ -342,17 +320,13 @@ class InstallService {
             $module_data = json_decode($json_content, true);
             
             if (json_last_error() !== JSON_ERROR_NONE) {
-                if ($this->log) {
-                    $this->log->write('GDT Install Service: Invalid JSON in opencart-module.json: ' . json_last_error_msg());
-                }
+                    LoggerService::write('GDT Install Service: Invalid JSON in opencart-module.json: ' . json_last_error_msg());
                 return;
             }
             
             $code = $module_data['code'] ?? $module_code;
             if (empty($code)) {
-                if ($this->log) {
-                    $this->log->write('GDT Install Service: Module code not found in JSON');
-                }
+                LoggerService::info('Module code not found in JSON', 'InstallService');
                 return;
             }
             
@@ -372,17 +346,12 @@ class InstallService {
                     $model->addExtensionPath($extension_install_id, 'system/modules/' . $code . '/opencart-module.json');
                 }
                 
-                if ($this->log) {
-                    $this->log->write('GDT Install Service: Saved opencart-module.json to ' . $json_target);
-                }
+                    LoggerService::write('GDT Install Service: Saved opencart-module.json to ' . $json_target);
             } else {
-                if ($this->log) {
-                    $this->log->write('GDT Install Service: Failed to save opencart-module.json');
-                }
+                LoggerService::info('Failed to save opencart-module.json', 'InstallService');
             }
         } catch (\Exception $e) {
-            if ($this->log) {
-                $this->log->write('GDT Install Service: Error saving opencart-module.json: ' . $e->getMessage());
+                LoggerService::write('GDT Install Service: Error saving opencart-module.json: ' . $e->getMessage());
             }
         }
     }

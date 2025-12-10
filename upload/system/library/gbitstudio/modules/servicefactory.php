@@ -8,6 +8,7 @@ use Gbitstudio\Modules\Services\InstallService;
 use Gbitstudio\Modules\Services\DashboardService;
 use Gbitstudio\Modules\Services\AutoUpdateService;
 use Gbitstudio\Modules\Services\ModuleCatalogService;
+use Gbitstudio\Modules\Services\LoggerService;
 
 /**
  * Фабрика для створення та управління сервісами
@@ -16,20 +17,33 @@ use Gbitstudio\Modules\Services\ModuleCatalogService;
 class ServiceFactory {
     private $registry;
     private $services = [];
+    private static $instance = null;
     
     public function __construct($registry) {
         $this->registry = $registry;
     }
     
     /**
-     * Отримує сервіс модулів
+     * Отримує singleton instance фабрики
+     * 
+     * @param \Registry $registry
+     * @return ServiceFactory
+     */
+    public static function getInstance($registry) {
+        if (self::$instance === null) {
+            self::$instance = new self($registry);
+        }
+        return self::$instance;
+    }
+    
+    /**
+     * Отримує сервіс автооновлень
      * 
      * @return ModuleService
      */
     public function getModuleService() {
         if (!isset($this->services['module'])) {
-            $log = $this->registry->get('log');
-            $this->services['module'] = new ModuleService($log);
+            $this->services['module'] = new ModuleService();
         }
         
         return $this->services['module'];
@@ -71,13 +85,11 @@ class ServiceFactory {
             $moduleService = $this->getModuleService();
             $updateService = $this->getUpdateService();
             $config = $this->registry->get('config');
-            $log = $this->registry->get('log');
             
             $this->services['dashboard'] = new DashboardService(
                 $moduleService,
                 $updateService,
-                $config,
-                $log
+                $config
             );
         }
         
@@ -96,15 +108,13 @@ class ServiceFactory {
             $installService = $this->getInstallService();
             $config = $this->registry->get('config');
             $cache = $this->registry->get('cache');
-            $log = $this->registry->get('log');
             
             $this->services['autoupdate'] = new AutoUpdateService(
                 $moduleService,
                 $updateService,
                 $installService,
                 $config,
-                $cache,
-                $log
+                $cache
             );
         }
         
@@ -119,9 +129,8 @@ class ServiceFactory {
     public function getModuleCatalogService() {
         if (!isset($this->services['catalog'])) {
             $config = $this->registry->get('config');
-            $log = $this->registry->get('log');
             
-            $this->services['catalog'] = new ModuleCatalogService($config, $log);
+            $this->services['catalog'] = new ModuleCatalogService($config);
         }
         
         return $this->services['catalog'];

@@ -8,11 +8,9 @@ namespace Gbitstudio\Modules\Services;
  */
 class ModuleCatalogService {
     private $config;
-    private $log;
     
-    public function __construct($config, $log) {
+    public function __construct($config) {
         $this->config = $config;
-        $this->log = $log;
     }
     
     /**

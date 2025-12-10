@@ -14,13 +14,12 @@ class AutoUpdateService {
     private $cache;
     private $log;
     
-    public function __construct($moduleService, $updateService, $installService, $config, $cache, $log) {
+    public function __construct($moduleService, $updateService, $installService, $config, $cache) {
         $this->moduleService = $moduleService;
         $this->updateService = $updateService;
         $this->installService = $installService;
         $this->config = $config;
         $this->cache = $cache;
-        $this->log = $log;
     }
     
     /**
@@ -29,24 +28,24 @@ class AutoUpdateService {
      * @return array
      */
     public function autoCheckAndUpdate() {
-        $this->log->write('GDT Auto Update: Starting auto-check');
+        LoggerService::write('GDT Auto Update: Starting auto-check');
         
         $installed_modules = $this->moduleService->getInstalledModules();
         if (empty($installed_modules)) {
-            $this->log->write('GDT Auto Update: No installed modules found');
+            LoggerService::write('GDT Auto Update: No installed modules found');
             return ['updated' => [], 'errors' => []];
         }
         
         $server_url = $this->getServerUrl();
         if (empty($server_url)) {
-            $this->log->write('GDT Auto Update: No server URL configured');
+            LoggerService::write('GDT Auto Update: No server URL configured');
             return ['updated' => [], 'errors' => []];
         }
         
         $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
         $auto_update_modules = $this->config->get('module_gdt_updater_auto_modules') ?: [];
         
-        $this->log->write('GDT Auto Update: Auto-update enabled for: ' . implode(', ', $auto_update_modules));
+        LoggerService::write('GDT Auto Update: Auto-update enabled for: ' . implode(', ', $auto_update_modules));
         
         $result = $this->processAutoUpdates($installed_modules, $auto_update_modules, $server_url, $api_key);
         
@@ -104,21 +103,21 @@ class AutoUpdateService {
                 return ['success' => false, 'error' => null];
             }
             
-            $this->log->write('GDT Auto Update: Starting update for ' . $module['code'] . 
+            LoggerService::write('GDT Auto Update: Starting update for ' . $module['code'] . 
                 ' from version ' . $module['version'] . ' to ' . $update_info['version']);
             
             $result = $this->performUpdate($module, $update_info, $server_url, $api_key);
             
             if ($result === true) {
-                $this->log->write('GDT Auto Update: Successfully updated ' . $module['code'] . 
+                LoggerService::write('GDT Auto Update: Successfully updated ' . $module['code'] . 
                     ' to version ' . $update_info['version']);
                 return ['success' => true, 'error' => null];
             } else {
-                $this->log->write('GDT Auto Update: Failed to update ' . $module['code'] . ' - ' . $result);
+                LoggerService::write('GDT Auto Update: Failed to update ' . $module['code'] . ' - ' . $result);
                 return ['success' => false, 'error' => $result];
             }
         } catch (\Exception $e) {
-            $this->log->write('GDT Auto Update Exception: ' . $e->getMessage());
+            LoggerService::write('GDT Auto Update Exception: ' . $e->getMessage());
             return ['success' => false, 'error' => $e->getMessage()];
         }
     }

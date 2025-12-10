@@ -12,11 +12,10 @@ class DashboardService {
     private $config;
     private $log;
     
-    public function __construct($moduleService, $updateService, $config, $log) {
+    public function __construct($moduleService, $updateService, $config) {
         $this->moduleService = $moduleService;
         $this->updateService = $updateService;
         $this->config = $config;
-        $this->log = $log;
     }
     
     /**

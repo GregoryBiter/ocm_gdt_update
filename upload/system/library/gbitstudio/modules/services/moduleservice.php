@@ -8,11 +8,6 @@ namespace Gbitstudio\Modules\Services;
  * Читає дані тільки з opencart-module.json файлів
  */
 class ModuleService {
-    private $log;
-    
-    public function __construct($log) {
-        $this->log = $log;
-    }
     
     /**
      * Отримує список встановлених модулів
@@ -66,9 +61,7 @@ class ModuleService {
                 }
             }
         } catch (\Exception $e) {
-            if ($this->log) {
-                $this->log->write('GDT Module Manager: Error getting modules from JSON files: ' . $e->getMessage());
-            }
+            LoggerService::error('Error getting modules from JSON files: ' . $e->getMessage(), 'ModuleService');
         }
         
         return $modules;
@@ -88,9 +81,7 @@ class ModuleService {
                 return $this->parseJsonFile($json_file, $code);
             }
         } catch (\Exception $e) {
-            if ($this->log) {
-                $this->log->write('GDT Module Manager: Error getting module from JSON file: ' . $e->getMessage());
-            }
+            LoggerService::error('Error getting module from JSON file: ' . $e->getMessage(), 'ModuleService');
         }
         
         return null;
@@ -113,9 +104,7 @@ class ModuleService {
             $data = json_decode($json_content, true);
             
             if (json_last_error() !== JSON_ERROR_NONE) {
-                if ($this->log) {
-                    $this->log->write('GDT Module Manager: JSON parse error in ' . $file_path . ': ' . json_last_error_msg());
-                }
+                LoggerService::error('JSON parse error in ' . $file_path . ': ' . json_last_error_msg(), 'ModuleService');
                 return null;
             }
             
@@ -136,9 +125,7 @@ class ModuleService {
                 'file_path' => $file_path
             ];
         } catch (\Exception $e) {
-            if ($this->log) {
-                $this->log->write('GDT Module Manager: Error parsing JSON file ' . $file_path . ': ' . $e->getMessage());
-            }
+            LoggerService::error('Error parsing JSON file ' . $file_path . ': ' . $e->getMessage(), 'ModuleService');
             return null;
         }
     }

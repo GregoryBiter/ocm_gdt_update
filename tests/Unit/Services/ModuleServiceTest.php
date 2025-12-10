@@ -11,7 +11,6 @@ use Mockery;
  */
 class ModuleServiceTest extends BaseTestCase
 {
-    private $log;
     private $moduleService;
 
     /**
@@ -21,8 +20,7 @@ class ModuleServiceTest extends BaseTestCase
     {
         parent::setUp();
         
-        $this->log = $this->createLogMock();
-        $this->moduleService = new ModuleService($this->log);
+        $this->moduleService = new ModuleService();
     }
 
     /**
@@ -30,7 +28,7 @@ class ModuleServiceTest extends BaseTestCase
      */
     public function testConstructor()
     {
-        $service = new ModuleService($this->log);
+        $service = new ModuleService();
         $this->assertInstanceOf(ModuleService::class, $service);
     }
 
@@ -59,7 +57,7 @@ class ModuleServiceTest extends BaseTestCase
      */
     public function testWorksWithoutLog()
     {
-        $service = new ModuleService(null);
+        $service = new ModuleService();
         
         $result = $service->getInstalledModules();
         

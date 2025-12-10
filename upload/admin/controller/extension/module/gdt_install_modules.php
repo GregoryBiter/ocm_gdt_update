@@ -1,4 +1,5 @@
 <?php
+use \Gbitstudio\Modules\Services\LoggerService;
 class ControllerExtensionModuleGdtInstallModules extends Controller {
     private $error = array();
 
@@ -409,10 +410,10 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
                             // Очищаем кеш
                             $this->cache->delete('*');
                             
-                            $this->log->write('GDT Install Modules: Successfully installed module ' . $module_code);
+                            LoggerService::write('GDT Install Modules: Successfully installed module ' . $module_code);
                         } else {
                             $json['error'] = is_string($install_result) ? $install_result : 'Ошибка установки модуля';
-                            $this->log->write('GDT Install Modules: Error installing module ' . $module_code . ': ' . $json['error']);
+                            LoggerService::write('GDT Install Modules: Error installing module ' . $module_code . ': ' . $json['error']);
                         }
                         
                         // Удаляем временный файл
@@ -423,7 +424,7 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
                 }
             } catch (Exception $e) {
                 $json['error'] = 'Ошибка: ' . $e->getMessage();
-                $this->log->write('GDT Install Modules error: ' . $e->getMessage());
+                LoggerService::write('GDT Install Modules error: ' . $e->getMessage());
             }
         }
         

@@ -1,4 +1,5 @@
 <?php
+use \Gbitstudio\Modules\Services\LoggerService;
 class ModelExtensionModuleGdtUpdater extends Model {
     
     /**
@@ -26,7 +27,7 @@ class ModelExtensionModuleGdtUpdater extends Model {
             // Перевіряємо чи існує таблиця
             $table_check = $this->db->query("SHOW TABLES LIKE 'gdt_modules'");
             if ($table_check->num_rows == 0) {
-                $this->log->write('GDT Module Manager: gdt_modules table does not exist, migration not needed');
+                LoggerService::info('gdt_modules table does not exist, migration not needed', 'Model');
                 return $result;
             }
             
@@ -35,7 +36,7 @@ class ModelExtensionModuleGdtUpdater extends Model {
             $modules_result = $this->db->query($query);
             
             if ($modules_result->num_rows == 0) {
-                $this->log->write('GDT Module Manager: No modules to migrate');
+                LoggerService::info('No modules to migrate', 'Model');
                 // Видаляємо порожню таблицю
                 $this->db->query("DROP TABLE IF EXISTS `gdt_modules`");
                 return $result;
@@ -77,7 +78,7 @@ class ModelExtensionModuleGdtUpdater extends Model {
                     
                     if (file_put_contents($json_file, $json_content)) {
                         $result['migrated']++;
-                        $this->log->write('GDT Module Manager: Migrated module ' . $code . ' to ' . $json_file);
+                        LoggerService::write('GDT Module Manager: Migrated module ' . $code . ' to ' . $json_file);
                     } else {
                         $result['errors'][] = 'Failed to write JSON file for module ' . $code;
                     }
@@ -89,14 +90,14 @@ class ModelExtensionModuleGdtUpdater extends Model {
             // Після успішної міграції видаляємо таблицю
             if (empty($result['errors'])) {
                 $this->db->query("DROP TABLE IF EXISTS `gdt_modules`");
-                $this->log->write('GDT Module Manager: Dropped gdt_modules table after successful migration');
+                LoggerService::info('Dropped gdt_modules table after successful migration', 'Model');
             } else {
-                $this->log->write('GDT Module Manager: Migration completed with errors, table not dropped');
+                LoggerService::info('Migration completed with errors, table not dropped', 'Model');
             }
             
         } catch (Exception $e) {
             $result['errors'][] = 'Migration error: ' . $e->getMessage();
-            $this->log->write('GDT Module Manager: Migration error: ' . $e->getMessage());
+            LoggerService::write('GDT Module Manager: Migration error: ' . $e->getMessage());
         }
         
         return $result;
@@ -134,7 +135,7 @@ class ModelExtensionModuleGdtUpdater extends Model {
                 return $modules;
             }
         } catch (Exception $e) {
-            $this->log->write('GDT Module Manager: Error getting OpenCart modifications: ' . $e->getMessage());
+            LoggerService::write('GDT Module Manager: Error getting OpenCart modifications: ' . $e->getMessage());
         }
         
         return [];
@@ -170,7 +171,7 @@ class ModelExtensionModuleGdtUpdater extends Model {
                 }
             }
         } catch (Exception $e) {
-            $this->log->write('GDT Module Manager: Error getting OpenCart modification by code: ' . $e->getMessage());
+            LoggerService::write('GDT Module Manager: Error getting OpenCart modification by code: ' . $e->getMessage());
         }
         
         return null;
@@ -197,7 +198,7 @@ class ModelExtensionModuleGdtUpdater extends Model {
                 }
             }
         } catch (Exception $e) {
-            $this->log->write('GDT Module Manager: gdt_modules table not available (deprecated): ' . $e->getMessage());
+            LoggerService::write('GDT Module Manager: gdt_modules table not available (deprecated): ' . $e->getMessage());
         }
         
         return $modules;
@@ -221,7 +222,7 @@ class ModelExtensionModuleGdtUpdater extends Model {
                 }
             }
         } catch (Exception $e) {
-            $this->log->write('GDT Module Manager: Error getting module from database: ' . $e->getMessage());
+            LoggerService::write('GDT Module Manager: Error getting module from database: ' . $e->getMessage());
         }
         
         return null;
