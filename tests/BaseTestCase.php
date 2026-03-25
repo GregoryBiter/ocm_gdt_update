@@ -2,95 +2,21 @@
 
 namespace Tests;
 
-use PHPUnit\Framework\TestCase;
+use Gbitstudio\OpenCartTestUtils\BaseOpenCartTestCase;
 use Mockery;
 
 /**
  * Базовий клас для всіх тестів
  * Надає спільну функціональність та допоміжні методи
  */
-abstract class BaseTestCase extends TestCase
+abstract class BaseTestCase extends BaseOpenCartTestCase
 {
     /**
-     * Очищення після кожного тесту
-     */
-    protected function tearDown(): void
-    {
-        Mockery::close();
-        parent::tearDown();
-    }
-
-    /**
-     * Створює mock об'єкт Registry OpenCart
+     * Создает временный ZIP файл для тестирования
      * 
-     * @return Mockery\MockInterface
-     */
-    protected function createRegistryMock()
-    {
-        $registry = Mockery::mock('Registry');
-        
-        $config = Mockery::mock('Config');
-        $config->shouldReceive('get')->andReturnArg(0);
-        
-        $registry->shouldReceive('get')->with('config')->andReturn($config)->byDefault();
-        
-        // Створюємо mock для load
-        $load = Mockery::mock('Loader');
-        $load->shouldReceive('model')->andReturnUsing(function ($path) use ($registry) {
-            $modelName = 'model_' . str_replace('/', '_', $path);
-            $model = Mockery::mock('Model');
-            $registry->shouldReceive('get')->with($modelName)->andReturn($model);
-            return $model;
-        });
-        
-        $registry->shouldReceive('get')->with('load')->andReturn($load);
-        
-        // Додаємо mock для log
-        $log = $this->createLogMock();
-        $registry->shouldReceive('get')->with('log')->andReturn($log);
-        
-        return $registry;
-    }
-
-    /**
-     * Створює mock об'єкт Log OpenCart
-     * 
-     * @return Mockery\MockInterface
-     */
-    protected function createLogMock()
-    {
-        $log = Mockery::mock('Log');
-        $log->shouldReceive('write')->andReturn(null);
-        return $log;
-    }
-
-    /**
-     * Створює mock об'єкт Model з методами
-     * 
-     * @param array $methods Масив методів та їх повернення
-     * @return Mockery\MockInterface
-     */
-    protected function createModelMock(array $methods = [])
-    {
-        $model = Mockery::mock('Model');
-        
-        foreach ($methods as $method => $return) {
-            if (is_callable($return)) {
-                $model->shouldReceive($method)->andReturnUsing($return);
-            } else {
-                $model->shouldReceive($method)->andReturn($return);
-            }
-        }
-        
-        return $model;
-    }
-
-    /**
-     * Створює тимчасовий ZIP файл для тестування
-     * 
-     * @param string $filename Ім'я файлу
-     * @param array $files Файли для додавання до архіву [шлях => вміст]
-     * @return string Шлях до створеного файлу
+     * @param string $filename Имя файла
+     * @param array $files Файлы для добавления в архив [путь => содержимое]
+     * @return string Путь к созданному файлу
      */
     protected function createTestZipFile(string $filename, array $files = [])
     {
@@ -148,14 +74,16 @@ abstract class BaseTestCase extends TestCase
             return;
         }
 
-        $files = array_diff(scandir($dir), ['.', '..']);
-        
-        foreach ($files as $file) {
-            $path = $dir . '/' . $file;
-            is_dir($path) ? $this->removeDirectory($path) : @unlink($path);
+        $items = array_diff(scandir($dir), ['.', '..']);
+        foreach ($items as $item) {
+            $path = $dir . '/' . $item;
+            if (is_dir($path)) {
+                $this->removeDirectory($path);
+            } else {
+                unlink($path);
+            }
         }
-        
-        @rmdir($dir);
+        rmdir($dir);
     }
 
     /**
