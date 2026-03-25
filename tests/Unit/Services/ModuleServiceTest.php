@@ -4,6 +4,7 @@ namespace Tests\Unit\Services;
 
 use Tests\BaseTestCase;
 use Gbitstudio\Modules\Services\ModuleService;
+use Gbitstudio\Modules\Services\ModuleIndexService;
 use Mockery;
 
 /**
@@ -12,6 +13,7 @@ use Mockery;
 class ModuleServiceTest extends BaseTestCase
 {
     private $moduleService;
+    private $indexService;
 
     /**
      * Налаштування перед кожним тестом
@@ -20,7 +22,8 @@ class ModuleServiceTest extends BaseTestCase
     {
         parent::setUp();
         
-        $this->moduleService = new ModuleService();
+        $this->indexService = Mockery::mock(ModuleIndexService::class);
+        $this->moduleService = new ModuleService($this->indexService);
     }
 
     /**
@@ -28,7 +31,7 @@ class ModuleServiceTest extends BaseTestCase
      */
     public function testConstructor()
     {
-        $service = new ModuleService();
+        $service = new ModuleService($this->indexService);
         $this->assertInstanceOf(ModuleService::class, $service);
     }
 
@@ -57,7 +60,7 @@ class ModuleServiceTest extends BaseTestCase
      */
     public function testWorksWithoutLog()
     {
-        $service = new ModuleService();
+        $service = new ModuleService($this->indexService);
         
         $result = $service->getInstalledModules();
         

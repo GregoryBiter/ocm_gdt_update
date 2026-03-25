@@ -2,12 +2,23 @@
 
 namespace Gbitstudio\Modules\Services;
 
+use Gbitstudio\Modules\GdtConstants;
+use Gbitstudio\Modules\Traits\JsonHandlerTrait;
+
 /**
  * Сервіс для роботи з модулями
  * Відповідає за бізнес-логіку роботи з модулями
  * Читає дані тільки з opencart-module.json файлів
  */
 class ModuleService {
+    use JsonHandlerTrait;
+    
+    /** @var ModuleIndexService */
+    private $index_service;
+
+    public function __construct(ModuleIndexService $index_service) {
+        $this->index_service = $index_service;
+    }
     
     /**
      * Отримує список встановлених модулів
@@ -32,7 +43,7 @@ class ModuleService {
     
     /**
      * Отримує модулі з opencart-module.json файлів
-     * Шукає в DIR_SYSTEM/module/{code}/opencart-module.json
+     * Шукає за індексом в system/module-index.json та окремими файлами в modules/
      * 
      * @return array
      */
@@ -40,23 +51,33 @@ class ModuleService {
         $modules = [];
         
         try {
-            $modules_dir = constant('DIR_SYSTEM') . 'modules/';
+            $index = $this->index_service->getIndex();
             
-            if (!is_dir($modules_dir)) {
-                return $modules;
+            // Look for modules in index
+            foreach ($index as $code => $version) {
+                $module_data = $this->getModuleFromJsonFiles($code);
+                if ($module_data) {
+                    $modules[] = $module_data;
+                }
             }
             
-            $dirs = scandir($modules_dir);
-            foreach ($dirs as $dir) {
-                if ($dir === '.' || $dir === '..') {
-                    continue;
-                }
-                
-                $json_file = $modules_dir . $dir . '/opencart-module.json';
-                if (file_exists($json_file)) {
-                    $module_data = $this->parseJsonFile($json_file, $dir);
-                    if ($module_data) {
-                        $modules[] = $module_data;
+            // Fallback: scan directory for old structure only if index is empty
+            if (empty($modules)) {
+                $modules_dir = GdtConstants::DIR_MODULES;
+                if (is_dir($modules_dir)) {
+                    $items = scandir($modules_dir);
+                    foreach ($items as $item) {
+                        if ($item === '.' || $item === '..' || substr($item, -5) === '.json') {
+                            continue;
+                        }
+                        
+                        // Old structure: folder/{code}/opencart-module.json
+                        if (is_dir($modules_dir . $item)) {
+                            $module_data = $this->getModuleFromJsonFiles($item);
+                            if ($module_data) {
+                                $modules[] = $module_data;
+                            }
+                        }
                     }
                 }
             }
@@ -68,17 +89,26 @@ class ModuleService {
     }
     
     /**
-     * Отримує модуль з opencart-module.json файла за кодом
+     * Отримує модуль з JSON файла за кодом
+     * Шукає спочатку за новою схемою (modules/{code}.json), потім за старою.
      * 
      * @param string $code
      * @return array|null
      */
     private function getModuleFromJsonFiles($code) {
         try {
-            $json_file = constant('DIR_SYSTEM') . 'modules/' . $code . '/opencart-module.json';
+            $modules_dir = GdtConstants::DIR_MODULES;
             
-            if (file_exists($json_file)) {
-                return $this->parseJsonFile($json_file, $code);
+            // 1. New structure: modules/{code}.json
+            $new_path = $modules_dir . $code . '.json';
+            if (file_exists($new_path)) {
+                return $this->parseJsonFile($new_path, $code);
+            }
+            
+            // 2. Old structure: modules/{code}/opencart-module.json
+            $old_path = $modules_dir . $code . '/opencart-module.json';
+            if (file_exists($old_path)) {
+                return $this->parseJsonFile($old_path, $code);
             }
         } catch (\Exception $e) {
             LoggerService::error('Error getting module from JSON file: ' . $e->getMessage(), 'ModuleService');
@@ -101,10 +131,9 @@ class ModuleService {
         
         try {
             $json_content = file_get_contents($file_path);
-            $data = json_decode($json_content, true);
+            $data = $this->decodeJson($json_content);
             
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                LoggerService::error('JSON parse error in ' . $file_path . ': ' . json_last_error_msg(), 'ModuleService');
+            if (empty($data)) {
                 return null;
             }
             
@@ -121,7 +150,7 @@ class ModuleService {
                 'controller' => $data['controller'] ?? '',
                 'provider' => $data['provider'] ?? '',
                 'files' => $data['files'] ?? [],
-                'source' => 'opencart_module_json',
+                'source' => GdtConstants::SOURCE_JSON,
                 'file_path' => $file_path
             ];
         } catch (\Exception $e) {

@@ -19,11 +19,8 @@
         "squizlabs/php_codesniffer": "^3.7"
     },
     "autoload": {
-        "psr-4": {
-            "Gbitstudio\\Modules\\": "upload/system/library/gbitstudio/modules/"
-        },
         "classmap": [
-            "upload/system/library/gbitstudio/modules/services/"
+            "upload/system/library/gbitstudio/modules/"
         ]
     },
     "autoload-dev": {

@@ -16,91 +16,106 @@ class ModelExtensionModuleGdtUpdater extends Model {
     }
     
     /**
-     * Мігрує дані з старої таблиці gdt_modules в opencart-module.json файли
+     * Мігрує дані з старої таблиці gdt_modules та старої структури папок в нову файлову систему
      * 
      * @return array ['migrated' => int, 'errors' => array]
      */
-    public function migrateFromDatabaseToJson() {
+    public function migrateToFiles() {
         $result = ['migrated' => 0, 'errors' => []];
-        
+        $index_service = $this->getServiceFactory()->getModuleIndexService();
+        $modules_dir = DIR_SYSTEM . 'modules/';
+
+        if (!is_dir($modules_dir)) {
+            mkdir($modules_dir, 0755, true);
+        }
+
         try {
-            // Перевіряємо чи існує таблиця
+            // 1. Міграція з БД (gdt_modules)
             $table_check = $this->db->query("SHOW TABLES LIKE 'gdt_modules'");
-            if ($table_check->num_rows == 0) {
-                LoggerService::info('gdt_modules table does not exist, migration not needed', 'Model');
-                return $result;
-            }
-            
-            // Отримуємо всі модулі з таблиці
-            $query = "SELECT * FROM `gdt_modules`";
-            $modules_result = $this->db->query($query);
-            
-            if ($modules_result->num_rows == 0) {
-                LoggerService::info('No modules to migrate', 'Model');
-                // Видаляємо порожню таблицю
-                $this->db->query("DROP TABLE IF EXISTS `gdt_modules`");
-                return $result;
-            }
-            
-            foreach ($modules_result->rows as $row) {
-                try {
+            if ($table_check->num_rows > 0) {
+                $modules_result = $this->db->query("SELECT * FROM `gdt_modules` track_data");
+                foreach ($modules_result->rows as $row) {
                     $module_data = json_decode($row['data'], true);
-                    if (!$module_data || !isset($module_data['code'])) {
-                        $result['errors'][] = 'Invalid module data in row ' . $row['id'];
+                    if ($module_data && isset($module_data['code'])) {
+                        $code = $module_data['code'];
+                        $version = $module_data['version'] ?? '1.0.0';
+                        
+                        $json_target = $modules_dir . $code . '.json';
+                        if (file_put_contents($json_target, json_encode($module_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES))) {
+                            $index_service->updateIndex($code, $version);
+                            $result['migrated']++;
+                        }
+                    }
+                }
+                // Видаляємо таблицю після переносу
+                $this->db->query("DROP TABLE IF EXISTS `gdt_modules` track_data");
+            }
+
+            // 2. Міграція зі старої структури папок (DIR_SYSTEM/modules/{code}/opencart-module.json)
+            if (is_dir($modules_dir)) {
+                $items = scandir($modules_dir);
+                foreach ($items as $item) {
+                    if ($item === '.' || $item === '..' || substr($item, -5) === '.json') {
                         continue;
                     }
-                    
-                    $code = $module_data['code'];
-                    $module_dir = DIR_SYSTEM . 'module/' . $code . '/';
-                    
-                    // Створюємо папку якщо не існує
-                    if (!is_dir($module_dir)) {
-                        mkdir($module_dir, 0755, true);
+
+                    $old_folder = $modules_dir . $item;
+                    $old_json = $old_folder . '/opencart-module.json';
+
+                    if (is_dir($old_folder) && file_exists($old_json)) {
+                        $content = file_get_contents($old_json);
+                        $module_data = json_decode($content, true);
+                        
+                        if ($module_data && isset($module_data['code'])) {
+                            $code = $module_data['code'];
+                            $version = $module_data['version'] ?? '1.0.0';
+                            
+                            $new_json_path = $modules_dir . $code . '.json';
+                            if (file_put_contents($new_json_path, $content)) {
+                                $index_service->updateIndex($code, $version);
+                                
+                                // Видаляємо стару папку з файлом
+                                @unlink($old_json);
+                                @rmdir($old_folder);
+                                
+                                $result['migrated']++;
+                            }
+                        }
                     }
-                    
-                    // Готуємо дані для JSON
-                    $json_data = [
-                        'code' => $code,
-                        'module_name' => $module_data['module_name'] ?? $module_data['name'] ?? $code,
-                        'version' => $module_data['version'] ?? '1.0.0',
-                        'creator_name' => $module_data['creator_name'] ?? $module_data['author'] ?? 'Unknown',
-                        'creator_email' => $module_data['creator_email'] ?? '',
-                        'description' => $module_data['description'] ?? '',
-                        'controller' => $module_data['controller'] ?? '',
-                        'provider' => $module_data['provider'] ?? '',
-                        'author_url' => $module_data['author_url'] ?? $module_data['link'] ?? '',
-                        'files' => $module_data['files'] ?? []
-                    ];
-                    
-                    // Зберігаємо в JSON файл
-                    $json_file = $module_dir . 'opencart-module.json';
-                    $json_content = json_encode($json_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                    
-                    if (file_put_contents($json_file, $json_content)) {
-                        $result['migrated']++;
-                        LoggerService::write('GDT Module Manager: Migrated module ' . $code . ' to ' . $json_file);
-                    } else {
-                        $result['errors'][] = 'Failed to write JSON file for module ' . $code;
-                    }
-                } catch (Exception $e) {
-                    $result['errors'][] = 'Error migrating module: ' . $e->getMessage();
                 }
             }
             
-            // Після успішної міграції видаляємо таблицю
-            if (empty($result['errors'])) {
-                $this->db->query("DROP TABLE IF EXISTS `gdt_modules`");
-                LoggerService::info('Dropped gdt_modules table after successful migration', 'Model');
-            } else {
-                LoggerService::info('Migration completed with errors, table not dropped', 'Model');
+            // 3. Виправляємо помилку з папкою 'module' (якщо вона була створена попередньою кривою міграцією)
+            $wrong_dir = DIR_SYSTEM . 'module/';
+            if (is_dir($wrong_dir)) {
+                $this->recursiveRemoveDir($wrong_dir);
             }
-            
+
         } catch (Exception $e) {
-            $result['errors'][] = 'Migration error: ' . $e->getMessage();
-            LoggerService::write('GDT Module Manager: Migration error: ' . $e->getMessage());
+            $result['errors'][] = $e->getMessage();
+            LoggerService::error('Migration failed: ' . $e->getMessage(), 'Model');
         }
-        
+
         return $result;
+    }
+
+    /**
+     * Рекурсивне видалення папки
+     */
+    private function recursiveRemoveDir($dir) {
+        if (!is_dir($dir)) return;
+        $files = array_diff(scandir($dir), ['.', '..']);
+        foreach ($files as $file) {
+            (is_dir("$dir/$file")) ? $this->recursiveRemoveDir("$dir/$file") : unlink("$dir/$file");
+        }
+        return rmdir($dir);
+    }
+
+    /**
+     * @deprecated Замінено на migrateToFiles()
+     */
+    public function migrateFromDatabaseToJson() {
+        return $this->migrateToFiles();
     }
     
     /**

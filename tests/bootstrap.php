@@ -18,6 +18,34 @@ if (!defined('DIR_CATALOG')) {
 if (!defined('DIR_IMAGE')) {
     define('DIR_IMAGE', sys_get_temp_dir() . '/opencart/image/');
 }
+
+// Заглушки для базових класів OpenCart
+if (!class_exists('Registry')) {
+    class Registry {
+        private $dataResult = [];
+        public function get($key) { return $this->dataResult[$key] ?? null; }
+        public function set($key, $value) { $this->dataResult[$key] = $value; }
+        public function has($key) { return isset($this->dataResult[$key]); }
+    }
+}
+
+if (!class_exists('Controller')) {
+    abstract class Controller {
+        protected $registry;
+        public function __construct($registry) { $this->registry = $registry; }
+        public function __get($key) { return $this->registry->get($key); }
+        public function __set($key, $value) { $this->registry->set($key, $value); }
+    }
+}
+
+if (!class_exists('Model')) {
+    abstract class Model {
+        protected $registry;
+        public function __construct($registry) { $this->registry = $registry; }
+        public function __get($key) { return $this->registry->get($key); }
+        public function __set($key, $value) { $this->registry->set($key, $value); }
+    }
+}
 if (!defined('DIR_SYSTEM')) {
     define('DIR_SYSTEM', sys_get_temp_dir() . '/opencart/system/');
 }

@@ -2,8 +2,15 @@
 
 namespace Gbitstudio\Modules;
 
+require_once(__DIR__ . '/GdtConstants.php');
+require_once(__DIR__ . '/traits/JsonHandlerTrait.php');
+require_once(__DIR__ . '/traits/ServerUrlTrait.php');
+require_once(__DIR__ . '/traits/HttpClientTrait.php');
+require_once(__DIR__ . '/services/BaseService.php');
+
 use Gbitstudio\Modules\Services\ModuleService;
 use Gbitstudio\Modules\Services\UpdateService;
+use Gbitstudio\Modules\Services\ModuleIndexService;
 use Gbitstudio\Modules\Services\InstallService;
 use Gbitstudio\Modules\Services\DashboardService;
 use Gbitstudio\Modules\Services\AutoUpdateService;
@@ -37,13 +44,28 @@ class ServiceFactory {
     }
     
     /**
-     * Отримує сервіс автооновлень
+     * Отримує сервіс індексу модулів
+     * 
+     * @return ModuleIndexService
+     */
+    public function getModuleIndexService() {
+        if (!isset($this->services['index'])) {
+            require_once(__DIR__ . '/services/moduleindexservice.php');
+            $this->services['index'] = new ModuleIndexService();
+        }
+        
+        return $this->services['index'];
+    }
+
+    /**
+     * Отримує сервіс модулів
      * 
      * @return ModuleService
      */
     public function getModuleService() {
         if (!isset($this->services['module'])) {
-            $this->services['module'] = new ModuleService();
+            require_once(__DIR__ . '/services/moduleservice.php');
+            $this->services['module'] = new ModuleService($this->getModuleIndexService());
         }
         
         return $this->services['module'];
@@ -56,6 +78,7 @@ class ServiceFactory {
      */
     public function getUpdateService() {
         if (!isset($this->services['update'])) {
+            require_once(__DIR__ . '/services/updateservice.php');
             $this->services['update'] = new UpdateService($this->registry);
         }
         
@@ -69,27 +92,29 @@ class ServiceFactory {
      */
     public function getInstallService() {
         if (!isset($this->services['install'])) {
-            $this->services['install'] = new InstallService($this->registry);
+            require_once(__DIR__ . '/services/installservice.php');
+            $this->services['install'] = new InstallService(
+                $this->registry, 
+                $this->getModuleService(),
+                $this->getModuleIndexService()
+            );
         }
         
         return $this->services['install'];
     }
     
     /**
-     * Отримує сервіс dashboard
+     * Отримує сервіс дашборда
      * 
      * @return DashboardService
      */
     public function getDashboardService() {
         if (!isset($this->services['dashboard'])) {
-            $moduleService = $this->getModuleService();
-            $updateService = $this->getUpdateService();
-            $config = $this->registry->get('config');
-            
+            require_once(__DIR__ . '/services/dashboardservice.php');
             $this->services['dashboard'] = new DashboardService(
-                $moduleService,
-                $updateService,
-                $config
+                $this->getModuleService(),
+                $this->getUpdateService(),
+                $this->registry->get('config')
             );
         }
         
@@ -103,18 +128,13 @@ class ServiceFactory {
      */
     public function getAutoUpdateService() {
         if (!isset($this->services['autoupdate'])) {
-            $moduleService = $this->getModuleService();
-            $updateService = $this->getUpdateService();
-            $installService = $this->getInstallService();
-            $config = $this->registry->get('config');
-            $cache = $this->registry->get('cache');
-            
+            require_once(__DIR__ . '/services/autoupdateservice.php');
             $this->services['autoupdate'] = new AutoUpdateService(
-                $moduleService,
-                $updateService,
-                $installService,
-                $config,
-                $cache
+                $this->getModuleService(),
+                $this->getUpdateService(),
+                $this->getInstallService(),
+                $this->registry->get('config'),
+                $this->registry->get('cache')
             );
         }
         
@@ -128,16 +148,15 @@ class ServiceFactory {
      */
     public function getModuleCatalogService() {
         if (!isset($this->services['catalog'])) {
-            $config = $this->registry->get('config');
-            
-            $this->services['catalog'] = new ModuleCatalogService($config);
+            require_once(__DIR__ . '/services/modulecatalogservice.php');
+            $this->services['catalog'] = new ModuleCatalogService($this->registry);
         }
         
         return $this->services['catalog'];
     }
     
     /**
-     * Очищає кеш сервісів (при необхідності)
+     * Очищає кеш сервісів
      */
     public function clearCache() {
         $this->services = [];

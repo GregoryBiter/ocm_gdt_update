@@ -29,7 +29,10 @@ class LoggerService {
      * @param string $prefix
      */
     public static function write($message, $prefix = 'GDT') {
-        self::getLog()->write($prefix . ': ' . $message);
+        $log = self::getLog();
+        if (method_exists($log, 'write')) {
+            $log->write($prefix . ': ' . $message);
+        }
     }
     
     /**
@@ -40,7 +43,10 @@ class LoggerService {
      */
     public static function error($message, $context = '') {
         $prefix = $context ? 'GDT Error [' . $context . ']' : 'GDT Error';
-        self::getLog()->write($prefix . ': ' . $message);
+        $log = self::getLog();
+        if (method_exists($log, 'write')) {
+            $log->write($prefix . ': ' . $message);
+        }
     }
     
     /**
@@ -51,7 +57,10 @@ class LoggerService {
      */
     public static function info($message, $context = '') {
         $prefix = $context ? 'GDT Info [' . $context . ']' : 'GDT Info';
-        self::getLog()->write($prefix . ': ' . $message);
+        $log = self::getLog();
+        if (method_exists($log, 'write')) {
+            $log->write($prefix . ': ' . $message);
+        }
     }
     
     /**

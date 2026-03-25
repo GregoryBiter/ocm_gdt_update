@@ -2,15 +2,18 @@
 
 namespace Gbitstudio\Modules\Services;
 
+use Gbitstudio\Modules\Traits\HttpClientTrait;
+use Gbitstudio\Modules\Traits\ServerUrlTrait;
+
 /**
  * Сервіс для роботи з каталогом модулів
  * Відповідає за отримання модулів з зовнішнього сервера та їх встановлення
  */
-class ModuleCatalogService {
-    private $config;
+class ModuleCatalogService extends BaseService {
+    use HttpClientTrait, ServerUrlTrait;
     
-    public function __construct($config) {
-        $this->config = $config;
+    public function __construct(\Registry $registry) {
+        parent::__construct($registry);
     }
     
     /**
@@ -51,7 +54,7 @@ class ModuleCatalogService {
      */
     public function searchModules($query, $category = '', $sort = 'relevance', $price = '') {
         if (empty($query)) {
-            throw new \Exception('Search query cannot be empty');
+            return $this->error('Search query cannot be empty');
         }
         
         $params = [
@@ -72,170 +75,53 @@ class ModuleCatalogService {
      * @return array
      */
     public function getStoreModules($page = 1, $limit = 20) {
-        $server_url = $this->getServerUrl();
-        if (empty($server_url)) {
-            throw new \Exception('Server URL not configured');
-        }
-        
-        $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
-        
-        $url = rtrim($server_url, '/') . '/index.php?route=gdt_update_server/modules';
-        $url .= '&page=' . $page . '&limit=' . $limit;
-        
-        $post_data = [];
-        if (!empty($api_key)) {
-            $post_data['api_key'] = $api_key;
-        }
-        
-        $response = $this->makeApiRequest($url, $post_data);
-        
-        if (isset($response['success']) && $response['success']) {
-            return $response['modules'];
-        } else {
-            throw new \Exception('Error getting modules: ' . (isset($response['error']) ? $response['error'] : 'Unknown error'));
-        }
-    }
-    
-    /**
-     * Отримує модулі з сервера за параметрами
-     * 
-     * @param array $params
-     * @return array
-     */
-    private function getModulesFromServer($params = []) {
-        $server_url = $this->getServerUrl();
-        if (empty($server_url)) {
-            throw new \Exception('Server URL not configured');
-        }
-        
-        $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
-        
-        $url = rtrim($server_url, '/') . '/index.php?route=gdt_update_server/modules';
-        
-        if (!empty($params)) {
-            foreach ($params as $key => $value) {
-                if (!empty($value)) {
-                    $url .= '&' . $key . '=' . urlencode($value);
-                }
+        try {
+            $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
+            
+            $url = $this->getServerUrl() . 'index.php?route=gdt_update_server/modules';
+            $url .= '&page=' . $page . '&limit=' . $limit;
+            
+            $post_data = [];
+            if (!empty($api_key)) {
+                $post_data['api_key'] = $api_key;
             }
-        }
-        
-        $post_data = [];
-        if (!empty($api_key)) {
-            $post_data['api_key'] = $api_key;
-        }
-        
-        $response = $this->makeApiRequest($url, $post_data);
-        
-        if (isset($response['success']) && $response['success']) {
-            return $response['modules'];
-        } else {
-            throw new \Exception('Error getting modules: ' . (isset($response['error']) ? $response['error'] : 'Unknown error'));
-        }
-    }
-    
-    /**
-     * Помічає встановлені модулі в списку
-     * 
-     * @param array $modules
-     * @param array $installed_modules
-     * @return array
-     */
-    public function markInstalledModules($modules, $installed_modules) {
-        $installed_map = [];
-        foreach ($installed_modules as $installed) {
-            if (isset($installed['code'])) {
-                $installed_map[$installed['code']] = [
-                    'version' => isset($installed['version']) ? $installed['version'] : '0.0.0',
-                    'name' => isset($installed['name']) ? $installed['name'] : $installed['code']
-                ];
-            }
-        }
-        
-        foreach ($modules as &$module) {
-            if (isset($module['code']) && isset($installed_map[$module['code']])) {
-                $module['installed'] = true;
-                $module['installed_version'] = $installed_map[$module['code']]['version'];
-                
-                if (isset($module['version'])) {
-                    $module['update_available'] = version_compare($module['version'], $installed_map[$module['code']]['version'], '>');
-                } else {
-                    $module['update_available'] = false;
-                }
+            
+            $result = $this->executeApiRequest($url, $post_data);
+            
+            if ($result['success'] && isset($result['data']['success']) && $result['data']['success']) {
+                return $this->success($result['data']['modules']);
             } else {
-                $module['installed'] = false;
-                $module['installed_version'] = null;
-                $module['update_available'] = false;
+                $error = $result['error'] ?? $result['data']['error'] ?? 'Unknown error';
+                return $this->error('Error getting modules: ' . $error);
             }
+        } catch (\Exception $e) {
+            return $this->error($e->getMessage());
         }
-        
-        return $modules;
     }
     
     /**
-     * Виконує API запит
-     * 
-     * @param string $url
-     * @param array $post_data
-     * @return array
+     * Отримує модулі з сервера за параметрами (внутрішній метод)
      */
-    private function makeApiRequest($url, $post_data = []) {
-        $ch = curl_init();
-        
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 30,
-            CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => 2,
-            CURLOPT_USERAGENT => 'GDT-ModuleManager/1.0',
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/x-www-form-urlencoded',
-                'Accept: application/json'
-            ]
-        ]);
-        
-        if (!empty($post_data)) {
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
-        }
-        
-        $response = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $error = curl_error($ch);
-        curl_close($ch);
-        
-        if ($error) {
-            throw new \Exception('cURL error: ' . $error);
-        }
-        
-        if ($http_code !== 200) {
-            throw new \Exception('HTTP error: ' . $http_code);
-        }
-        
-        $decoded = json_decode($response, true);
-        if ($decoded === null) {
-            throw new \Exception('Invalid JSON response from server');
-        }
-        
-        return $decoded;
-    }
-    
-    /**
-     * Отримує URL сервера
-     * 
-     * @return string
-     */
-    private function getServerUrl() {
-        $server_url = $this->config->get('module_gdt_updater_server');
-        
-        if (empty($server_url)) {
-            if (defined('HTTP_SERVER')) {
-                return HTTP_SERVER . 'ocm_gdt_update_server';
+    private function getModulesFromServer($params) {
+        try {
+            $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
+            
+            $url = $this->getServerUrl() . 'index.php?route=gdt_update_server/modules';
+            
+            $post_data = $params;
+            if (!empty($api_key)) {
+                $post_data['api_key'] = $api_key;
             }
+            
+            $result = $this->executeApiRequest($url, $post_data);
+            
+            if ($result['success'] && isset($result['data']['success']) && $result['data']['success']) {
+                return $this->success($result['data']['modules']);
+            } else {
+                return $this->error('Error getting modules from server');
+            }
+        } catch (\Exception $e) {
+            return $this->error($e->getMessage());
         }
-        
-        return $server_url ?: '';
     }
 }

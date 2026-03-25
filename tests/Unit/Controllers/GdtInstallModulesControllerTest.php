@@ -5,6 +5,8 @@ namespace Tests\Unit\Controllers;
 use Tests\BaseTestCase;
 use Mockery;
 
+require_once __DIR__ . '/../../../upload/admin/controller/extension/module/gdt_install_modules.php';
+
 /**
  * Unit тести для ControllerExtensionModuleGdtInstallModules
  * 
@@ -44,9 +46,7 @@ class GdtInstallModulesControllerTest extends BaseTestCase
         $this->setupRegistry();
         
         // Створюємо mock контролера
-        $this->controller = Mockery::mock('ControllerExtensionModuleGdtInstallModules')
-            ->makePartial()
-            ->shouldAllowMockingProtectedMethods();
+        $this->controller = new \ControllerExtensionModuleGdtInstallModules($this->registry);
             
         // Встановлюємо registry для контролера
         $this->setControllerRegistry();
@@ -76,6 +76,22 @@ class GdtInstallModulesControllerTest extends BaseTestCase
         $this->registry->shouldReceive('get')
             ->with('document')
             ->andReturn($this->document);
+
+        $this->registry->shouldReceive('get')
+            ->with('url')
+            ->andReturn($this->url);
+
+        $this->registry->shouldReceive('get')
+            ->with('load')
+            ->andReturn($this->load);
+
+        // Налаштовуємо мову за замовчуванням
+        $this->language->shouldReceive('get')
+            ->andReturn('dummy_text')
+            ->byDefault();
+
+        // Mock common session data
+        $this->session->data = ['user_token' => 'test_token_123'];
             
         $this->registry->shouldReceive('get')
             ->with('url')
@@ -148,7 +164,7 @@ class GdtInstallModulesControllerTest extends BaseTestCase
             ->with('heading_title')
             ->andReturn('Module Store');
             
-        $this->language->shouldReceive('load')
+        $this->load->shouldReceive('language')
             ->with('extension/module/gdt_install_modules')
             ->andReturn([]);
 
@@ -170,6 +186,9 @@ class GdtInstallModulesControllerTest extends BaseTestCase
         // Налаштовуємо response
         $this->response->shouldReceive('setOutput')
             ->once();
+
+        // Викликаємо метод
+        $this->controller->store();
 
         $this->assertTrue(true);
     }
@@ -204,12 +223,26 @@ class GdtInstallModulesControllerTest extends BaseTestCase
             ->with('heading_title')
             ->andReturn('Featured Modules');
             
-        $this->language->shouldReceive('load')
+        $this->load->shouldReceive('language')
             ->andReturn([]);
 
         $this->document->shouldReceive('setTitle')
             ->with(Mockery::pattern('/Featured/'))
             ->once();
+
+        $this->url->shouldReceive('link')
+            ->andReturn('http://example.com/test');
+
+        $this->load->shouldReceive('controller')
+            ->andReturn('');
+            
+        $this->load->shouldReceive('view')
+            ->andReturn('<html>Test View</html>');
+
+        $this->response->shouldReceive('setOutput')
+            ->once();
+
+        $this->controller->featured();
 
         $this->assertTrue(true);
     }
@@ -222,11 +255,25 @@ class GdtInstallModulesControllerTest extends BaseTestCase
         $this->language->shouldReceive('get')
             ->andReturn('Popular Modules');
             
-        $this->language->shouldReceive('load')
+        $this->load->shouldReceive('language')
             ->andReturn([]);
 
         $this->document->shouldReceive('setTitle')
             ->once();
+
+        $this->url->shouldReceive('link')
+            ->andReturn('http://example.com/test');
+
+        $this->load->shouldReceive('controller')
+            ->andReturn('');
+            
+        $this->load->shouldReceive('view')
+            ->andReturn('<html>Test View</html>');
+
+        $this->response->shouldReceive('setOutput')
+            ->once();
+
+        $this->controller->popular();
 
         $this->assertTrue(true);
     }
@@ -237,13 +284,27 @@ class GdtInstallModulesControllerTest extends BaseTestCase
     public function testNewestPageHandlesRequest()
     {
         $this->language->shouldReceive('get')
-            ->andReturn('New Modules');
+            ->andReturn('Newest Modules');
             
-        $this->language->shouldReceive('load')
+        $this->load->shouldReceive('language')
             ->andReturn([]);
 
         $this->document->shouldReceive('setTitle')
             ->once();
+
+        $this->url->shouldReceive('link')
+            ->andReturn('http://example.com/test');
+
+        $this->load->shouldReceive('controller')
+            ->andReturn('');
+            
+        $this->load->shouldReceive('view')
+            ->andReturn('<html>Test View</html>');
+
+        $this->response->shouldReceive('setOutput')
+            ->once();
+
+        $this->controller->newest();
 
         $this->assertTrue(true);
     }

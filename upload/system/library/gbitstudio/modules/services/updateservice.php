@@ -2,28 +2,30 @@
 
 namespace Gbitstudio\Modules\Services;
 
+use Gbitstudio\Modules\Traits\HttpClientTrait;
+use Gbitstudio\Modules\Traits\ServerUrlTrait;
+
 /**
  * Сервіс для перевірки та завантаження оновлень
  */
-class UpdateService {
-    private $registry;
+class UpdateService extends BaseService {
+    use HttpClientTrait, ServerUrlTrait;
     
     public function __construct(\Registry $registry) {
-        $this->registry = $registry;
+        parent::__construct($registry);
     }
     
     /**
      * Перевіряє наявність оновлень для модуля
      * 
-     * @param string $server_url URL сервера оновлень
      * @param array $module Інформація про модуль
      * @param string $api_key Ключ API
-     * @return array|bool
+     * @return array
      */
-    public function checkModuleUpdate($server_url, $module, $api_key = '') {
-        LoggerService::info('Checking update for ' . $module['code'], 'UpdateService');
+    public function checkModuleUpdate($module, $api_key = '') {
+        $this->logInfo('Checking update for ' . $module['code']);
         
-        $url = rtrim($server_url, '/') . '/index.php?route=gdt_update_server/check';
+        $url = $this->getServerUrl() . 'index.php?route=gdt_update_server/check';
         $post_data = [
             'code' => $module['code'],
             'version' => $module['version']
@@ -33,27 +35,28 @@ class UpdateService {
             $post_data['api_key'] = $api_key;
         }
         
-        $response_data = $this->executeApiRequest($url, $post_data);
+        $response = $this->executeApiRequest($url, $post_data);
         
-        if (isset($response_data['error'])) {
-            return $response_data;
+        if (!$response['success']) {
+            return $response;
         }
         
-        return $this->parseUpdateResponse($response_data, $module);
+        $parse_result = $this->parseUpdateResponse($response['data'], $module);
+        
+        return $this->success($parse_result);
     }
     
     /**
      * Завантажує модуль з сервера
      * 
-     * @param string $server_url URL сервера
      * @param string $module_code Код модуля
      * @param string $version Версія модуля
      * @param string $api_key Ключ API
      * @return array ['success' => bool, 'file_path' => string|null, 'error' => string|null]
      */
-    public function downloadModule($server_url, $module_code, $version, $api_key = '') {
+    public function downloadModule($module_code, $version, $api_key = '') {
         try {
-            $download_url = rtrim($server_url, '/') . '/index.php?route=gdt_update_server/download';
+            $download_url = $this->getServerUrl() . 'index.php?route=gdt_update_server/download';
             
             $post_data = [
                 'code' => $module_code,
@@ -67,7 +70,7 @@ class UpdateService {
             $temp_file = $this->downloadFile($download_url, $post_data);
             
             if ($temp_file) {
-                LoggerService::info('Downloaded module to ' . $temp_file, 'UpdateService');
+                $this->logInfo('Downloaded module to ' . $temp_file);
                 return [
                     'success' => true,
                     'file_path' => $temp_file,
@@ -81,7 +84,7 @@ class UpdateService {
                 ];
             }
         } catch (\Exception $e) {
-            LoggerService::error('Download error: ' . $e->getMessage(), 'UpdateService');
+            $this->logError('Download error: ' . $e->getMessage());
             return [
                 'success' => false,
                 'file_path' => null,
@@ -97,123 +100,58 @@ class UpdateService {
      * @param array $post_data POST дані
      * @return string|false Шлях до тимчасового файлу або false при помилці
      */
-    /**
-     * Завантажує файл з сервера (внутрішній метод)
-     * 
-     * @param string $download_url URL для завантаження
-     * @param array $post_data POST дані
-     * @return string|false Шлях до тимчасового файлу або false при помилці
-     */
     private function downloadFile($download_url, $post_data) {
-        $temp_file = tempnam(sys_get_temp_dir(), 'gdt_module_');
+        $curl = curl_init($download_url);
         
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $download_url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_TIMEOUT => 300,
-            CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => 2,
-            CURLOPT_USERAGENT => 'GDT-ModuleManager/1.0'
-        ]);
+        $temp_file = tempnam(sys_get_temp_dir(), 'gdt_');
+        $fp = fopen($temp_file, 'w');
         
-        if (!empty($post_data)) {
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
-        }
-
-        $data = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $error = curl_error($ch);
-        curl_close($ch);
+        curl_setopt($curl, CURLOPT_POST, true);
+        curl_setopt($curl, CURLOPT_POSTFIELDS, http_build_query($post_data));
+        curl_setopt($curl, CURLOPT_FILE, $fp);
+        curl_setopt($curl, CURLOPT_HEADER, 0);
+        curl_setopt($curl, CURLOPT_TIMEOUT, 60);
+        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
         
-        if ($error) {
-            throw new \Exception('cURL error: ' . $error);
-        }
-
-        if ($http_code === 200 && $data !== false) {
-            $decoded = json_decode($data, true);
-            if ($decoded !== null && isset($decoded['error'])) {
-                throw new \Exception('Server error: ' . $decoded['error']);
-            }
-            
-            file_put_contents($temp_file, $data);
-            return $temp_file;
-        } else {
-            throw new \Exception('HTTP error: ' . $http_code);
-        }
-    }
-    
-    /**
-     * Виконує API запит до сервера
-     * 
-     * @param string $url
-     * @param array $post_data
-     * @param int $timeout
-     * @return array
-     */
-    private function executeApiRequest($url, $post_data, $timeout = 10) {
-        $curl = curl_init();
-        
-        curl_setopt_array($curl, [
-            CURLOPT_URL => $url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => http_build_query($post_data),
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/x-www-form-urlencoded',
-                'User-Agent: GDT-ModuleManager/1.0'
-            ],
-            CURLOPT_TIMEOUT => $timeout,
-            CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => 2,
-            CURLOPT_FAILONERROR => false
-        ]);
-        
-        $response = curl_exec($curl);
+        $result = curl_exec($curl);
         $error = curl_error($curl);
         $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-        $content_type = curl_getinfo($curl, CURLINFO_CONTENT_TYPE);
         
         curl_close($curl);
+        fclose($fp);
         
-        if ($error) {
-            LoggerService::error('cURL error: ' . $error, 'UpdateService');
-            return ['error' => 'curl', 'message' => $error];
+        if (!$result || $http_code >= 400) {
+            $this->logError('File download error: ' . $error . ' | HTTP Code: ' . $http_code);
+            @unlink($temp_file);
+            return false;
         }
         
-        if ($http_code != 200) {
-            LoggerService::error('HTTP error: ' . $http_code, 'UpdateService');
-            return ['error' => 'http', 'code' => $http_code];
-        }
-        
-        return [
-            'response' => $response,
-            'http_code' => $http_code,
-            'content_type' => $content_type
-        ];
+        return $temp_file;
     }
     
     /**
      * Парсить відповідь сервера про оновлення
      * 
-     * @param array $response_data
-     * @param array $module
+     * @param array $response_data Дані від сервера
+     * @param array $module Поточний модуль
      * @return array|bool
      */
     private function parseUpdateResponse($response_data, $module) {
-        if (isset($response_data['response'])) {
-            $update_info = json_decode($response_data['response'], true);
-            
-            if (isset($update_info['status']) && $update_info['status'] == 'update_available') {
-                return $update_info;
-            }
+        if (!isset($response_data['version'])) {
+            return false;
         }
         
-        LoggerService::info('No update available for module ' . $module['code'], 'UpdateService');
+        if (version_compare($response_data['version'], $module['version'], '>')) {
+            return [
+                'code' => $module['code'],
+                'current_version' => $module['version'],
+                'new_version' => $response_data['version'],
+                'download_url' => isset($response_data['download_url']) ? $response_data['download_url'] : '',
+                'changelog' => isset($response_data['changelog']) ? $response_data['changelog'] : '',
+                'date' => isset($response_data['date']) ? $response_data['date'] : ''
+            ];
+        }
+        
         return false;
     }
 }

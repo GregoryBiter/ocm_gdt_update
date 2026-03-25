@@ -4,6 +4,8 @@ namespace Tests\Unit\Services;
 
 use Tests\BaseTestCase;
 use Gbitstudio\Modules\Services\InstallService;
+use Gbitstudio\Modules\Services\ModuleService;
+use Gbitstudio\Modules\Services\ModuleIndexService;
 use Mockery;
 
 /**
@@ -14,6 +16,8 @@ class InstallServiceTest extends BaseTestCase
     private $registry;
     private $log;
     private $installService;
+    private $moduleService;
+    private $indexService;
 
     /**
      * Налаштування перед кожним тестом
@@ -23,7 +27,9 @@ class InstallServiceTest extends BaseTestCase
         parent::setUp();
         
         $this->registry = $this->createRegistryMock();
-        $this->installService = new InstallService($this->registry);
+        $this->indexService = Mockery::mock(ModuleIndexService::class);
+        $this->moduleService = Mockery::mock(ModuleService::class);
+        $this->installService = new InstallService($this->registry, $this->moduleService, $this->indexService);
     }
 
     /**
@@ -31,7 +37,7 @@ class InstallServiceTest extends BaseTestCase
      */
     public function testConstructor()
     {
-        $service = new InstallService($this->registry);
+        $service = new InstallService($this->registry, $this->moduleService, $this->indexService);
         $this->assertInstanceOf(InstallService::class, $service);
     }
 

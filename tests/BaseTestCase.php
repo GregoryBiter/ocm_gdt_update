@@ -29,6 +29,11 @@ abstract class BaseTestCase extends TestCase
     {
         $registry = Mockery::mock('Registry');
         
+        $config = Mockery::mock('Config');
+        $config->shouldReceive('get')->andReturnArg(0);
+        
+        $registry->shouldReceive('get')->with('config')->andReturn($config)->byDefault();
+        
         // Створюємо mock для load
         $load = Mockery::mock('Loader');
         $load->shouldReceive('model')->andReturnUsing(function ($path) use ($registry) {
