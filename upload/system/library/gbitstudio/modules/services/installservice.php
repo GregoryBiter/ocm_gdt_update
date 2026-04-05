@@ -8,9 +8,11 @@ use \Gbitstudio\Modules\Services\LoggerService;
  */
 class InstallService {
     private $registry;
+    private $db;
     
     public function __construct(\Registry $registry) {
         $this->registry = $registry;
+        $this->db = $registry->get('db');
     }
     
     /**
@@ -52,9 +54,11 @@ class InstallService {
 
             // Етап 2: Переміщення файлів
             $move_result = $this->moveModuleFiles($extract_dir, $extension_install_id);
-            if ($move_result !== true) {
+            if (!is_array($move_result)) {
                 throw new \Exception('Move error: ' . $move_result);
             }
+            
+            $installed_paths = $move_result;
 
             // Етап 3: Обробка XML
             $xml_result = $this->processModuleXml($extract_dir, $extension_install_id);
@@ -62,8 +66,8 @@ class InstallService {
                 throw new \Exception('XML processing error: ' . $xml_result);
             }
             
-            // Етап 4: Збереження opencart-module.json
-            $this->saveModuleJsonFile($extract_dir, $module_code, $extension_install_id);
+            // Етап 4: Збереження в базу даних
+            $this->saveModuleToDatabase($extract_dir, $module_code, $installed_paths);
 
             // Етап 5: Очищення
             $this->cleanupInstallation($extract_dir, $temp_file);
@@ -112,15 +116,16 @@ class InstallService {
      * 
      * @param string $extract_dir
      * @param int $extension_install_id
-     * @return bool|string
+     * @return array|string Список переміщених файлів або помилка
      */
     private function moveModuleFiles($extract_dir, $extension_install_id) {
         $directory = $extract_dir . '/';
+        $installed_paths = [];
         
         // Перевіряємо наявність папки upload/
         if (!is_dir($directory . 'upload/')) {
             LoggerService::info('No upload/ directory found', 'InstallService');
-            return true;
+            return $installed_paths;
         }
 
         // Отримуємо список всіх файлів для завантаження
@@ -139,8 +144,6 @@ class InstallService {
             }
         }
 
-        // Без обмежень - дозволяємо встановлення в будь-яку директорію
-        
         // Переміщуємо файли
         $this->registry->get('load')->model('setting/extension');
         $model = $this->registry->get('model_setting_extension');
@@ -160,7 +163,6 @@ class InstallService {
                 $path = DIR_SYSTEM . substr($destination, 7);
             } else {
                 // Файли в корені - визначаємо корінь через DIR_APPLICATION
-                // DIR_APPLICATION це /path/to/opencart/admin/ або /path/to/opencart/
                 $root = rtrim(str_replace('admin/', '', rtrim(DIR_APPLICATION, '/')), '/') . '/';
                 $path = $root . $destination;
             }
@@ -168,6 +170,7 @@ class InstallService {
             if (is_dir($file) && !is_dir($path)) {
                 if (mkdir($path, 0777)) {
                     $model->addExtensionPath($extension_install_id, $destination);
+                    $installed_paths[] = $destination;
                         LoggerService::write('GDT Install Service: Created directory: ' . $destination);
                 }
             }
@@ -175,14 +178,13 @@ class InstallService {
             if (is_file($file)) {
                 if (rename($file, $path)) {
                     $model->addExtensionPath($extension_install_id, $destination);
+                    $installed_paths[] = $destination;
                         LoggerService::write('GDT Install Service: Moved file: ' . $destination);
                 }
             }
         }
 
-
-
-        return true;
+        return $installed_paths;
     }
     
     /**
@@ -301,13 +303,14 @@ class InstallService {
     }
     
     /**
-     * Зберігає opencart-module.json в DIR_SYSTEM/modules/{code}/
+     * Зберігає дані модуля в базу даних
      * 
      * @param string $extract_dir
      * @param string $module_code
+     * @param array $paths
      * @return void
      */
-    private function saveModuleJsonFile($extract_dir, $module_code, $extension_install_id = 0) {
+    private function saveModuleToDatabase($extract_dir, $module_code, $paths = []) {
         try {
             // Шукаємо opencart-module.json у розпакованому архіві
             $json_source = $extract_dir . '/opencart-module.json';
@@ -330,28 +333,26 @@ class InstallService {
                 return;
             }
             
-            // Створюємо папку DIR_SYSTEM/modules/{code}/
-            $module_dir = DIR_SYSTEM . 'modules/' . $code . '/';
-            if (!is_dir($module_dir)) {
-                mkdir($module_dir, 0755, true);
-            }
+            // Записуємо в базу даних
+            $name = $module_data['module_name'] ?? $module_data['name'] ?? $code;
+            $version = $module_data['version'] ?? '1.0.0';
             
-            // Копіюємо opencart-module.json
-            $json_target = $module_dir . 'opencart-module.json';
-            if (copy($json_source, $json_target)) {
-                // Реєструємо файл в базі даних
-                if ($extension_install_id > 0) {
-                    $this->registry->get('load')->model('setting/extension');
-                    $model = $this->registry->get('model_setting_extension');
-                    $model->addExtensionPath($extension_install_id, 'system/modules/' . $code . '/opencart-module.json');
-                }
-                
-                LoggerService::info('Saved opencart-module.json to ' . $json_target, 'InstallService');
-            } else {
-                LoggerService::info('Failed to save opencart-module.json', 'InstallService');
-            }
+            // Видаляємо стару інформацію про цей модуль якщо є
+            $this->db->query("DELETE FROM `" . DB_PREFIX . "gdt_modules` WHERE `code` = '" . $this->db->escape($code) . "'");
+            
+            // Вставляємо нову
+            $this->db->query("INSERT INTO `" . DB_PREFIX . "gdt_modules` SET 
+                `code` = '" . $this->db->escape($code) . "',
+                `name` = '" . $this->db->escape($name) . "',
+                `version` = '" . $this->db->escape($version) . "',
+                `data` = '" . $this->db->escape(json_encode($module_data, JSON_UNESCAPED_UNICODE)) . "',
+                `paths` = '" . $this->db->escape(json_encode($paths, JSON_UNESCAPED_UNICODE)) . "',
+                `date_added` = NOW()");
+            
+            LoggerService::info('Saved module ' . $code . ' to database', 'InstallService');
+            
         } catch (\Exception $e) {
-            LoggerService::error('Error saving opencart-module.json: ' . $e->getMessage(), 'InstallService');
+            LoggerService::error('Error saving module to database: ' . $e->getMessage(), 'InstallService');
         }
     }
     

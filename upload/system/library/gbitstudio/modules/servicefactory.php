@@ -43,7 +43,7 @@ class ServiceFactory {
      */
     public function getModuleService() {
         if (!isset($this->services['module'])) {
-            $this->services['module'] = new ModuleService();
+            $this->services['module'] = new ModuleService($this->registry);
         }
         
         return $this->services['module'];

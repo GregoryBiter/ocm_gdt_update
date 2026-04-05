@@ -689,12 +689,16 @@ class ControllerExtensionModuleGdtUpdater extends Controller
      * Установка модуля
      */
     public function install() {
-        // Виконуємо міграцію даних з gdt_modules в opencart-module.json
         $this->load->model('extension/module/gdt_updater');
-        $migration_result = $this->model_extension_module_gdt_updater->migrateFromDatabaseToJson();
+        
+        // Створюємо нову таблицю
+        $this->model_extension_module_gdt_updater->createTables();
+        
+        // Виконуємо міграцію даних з opencart-module.json в нову базу
+        $migration_result = $this->model_extension_module_gdt_updater->migrateFromJsonToDatabase();
         
         if ($migration_result['migrated'] > 0) {
-            LoggerService::write('GDT Updater: Migrated ' . $migration_result['migrated'] . ' modules to opencart-module.json');
+            LoggerService::write('GDT Updater: Migrated ' . $migration_result['migrated'] . ' modules from JSON to database');
         }
         
         if (!empty($migration_result['errors'])) {
@@ -707,7 +711,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $this->model_setting_event->addEvent('auto_update_menu', 'admin/view/common/column_left/before', 'extension/module/gdt_updater/menuAdmin');
 
         // Логируем успешную установку
-        LoggerService::write('GDT Updater: События добавлены, модуль установлен.');
+        LoggerService::write('GDT Updater: События добавлены, таблица создана, модуль установлен.');
     }
 
     public function uninstall()
@@ -729,13 +733,8 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         // Очищаем массив автообновления
         $this->saveModuleSettings(array('module_gdt_updater_auto_modules' => array()));
 
-        // Переставляем все остальные dashboard модули с sort_order > 1 на одну позицию вверх
-        // $this->db->query("UPDATE " . DB_PREFIX . "setting 
-        //                  SET value = (CAST(value AS UNSIGNED) - 1) 
-        //                  WHERE `key` LIKE '%_sort_order' 
-        //                  AND `code` LIKE 'dashboard_%' 
-        //                  AND `code` != 'dashboard_gdt_updater' 
-        //                  AND CAST(value AS UNSIGNED) > 1");
+        // Видаляємо таблицю модулів
+        $this->db->query("DROP TABLE IF EXISTS `" . DB_PREFIX . "gdt_modules` ");
     }
 
 

@@ -16,84 +16,93 @@ class ModelExtensionModuleGdtUpdater extends Model {
     }
     
     /**
-     * Мігрує дані з старої таблиці gdt_modules в opencart-module.json файли
+     * Створює необхідні таблиці в базі даних
+     */
+    public function createTables() {
+        $this->db->query("
+            CREATE TABLE IF NOT EXISTS `" . DB_PREFIX . "gdt_modules` (
+                `module_id` INT(11) NOT NULL AUTO_INCREMENT,
+                `code` VARCHAR(64) NOT NULL,
+                `name` VARCHAR(255) NOT NULL,
+                `version` VARCHAR(32) NOT NULL,
+                `data` TEXT NOT NULL,
+                `paths` TEXT NOT NULL,
+                `date_added` DATETIME NOT NULL,
+                PRIMARY KEY (`module_id`),
+                UNIQUE KEY `code` (`code`)
+            ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
+        ");
+    }
+
+    /**
+     * Мігрує дані з JSON файлів в нову таблицю gdt_modules
      * 
      * @return array ['migrated' => int, 'errors' => array]
      */
-    public function migrateFromDatabaseToJson() {
+    public function migrateFromJsonToDatabase() {
         $result = ['migrated' => 0, 'errors' => []];
         
         try {
-            // Перевіряємо чи існує таблиця
-            $table_check = $this->db->query("SHOW TABLES LIKE 'gdt_modules'");
-            if ($table_check->num_rows == 0) {
-                LoggerService::info('gdt_modules table does not exist, migration not needed', 'Model');
+            // Переконуємось що таблиця існує
+            $this->createTables();
+            
+            $modules_dir = constant('DIR_SYSTEM') . 'modules/';
+            
+            if (!is_dir($modules_dir)) {
+                LoggerService::info('system/modules/ directory does not exist, migration not needed', 'Model');
                 return $result;
             }
             
-            // Отримуємо всі модулі з таблиці
-            $query = "SELECT * FROM `gdt_modules`";
-            $modules_result = $this->db->query($query);
-            
-            if ($modules_result->num_rows == 0) {
-                LoggerService::info('No modules to migrate', 'Model');
-                // Видаляємо порожню таблицю
-                $this->db->query("DROP TABLE IF EXISTS `gdt_modules`");
-                return $result;
-            }
-            
-            foreach ($modules_result->rows as $row) {
-                try {
-                    $module_data = json_decode($row['data'], true);
-                    if (!$module_data || !isset($module_data['code'])) {
-                        $result['errors'][] = 'Invalid module data in row ' . $row['id'];
-                        continue;
-                    }
-                    
-                    $code = $module_data['code'];
-                    $module_dir = DIR_SYSTEM . 'module/' . $code . '/';
-                    
-                    // Створюємо папку якщо не існує
-                    if (!is_dir($module_dir)) {
-                        mkdir($module_dir, 0755, true);
-                    }
-                    
-                    // Готуємо дані для JSON
-                    $json_data = [
-                        'code' => $code,
-                        'module_name' => $module_data['module_name'] ?? $module_data['name'] ?? $code,
-                        'version' => $module_data['version'] ?? '1.0.0',
-                        'creator_name' => $module_data['creator_name'] ?? $module_data['author'] ?? 'Unknown',
-                        'creator_email' => $module_data['creator_email'] ?? '',
-                        'description' => $module_data['description'] ?? '',
-                        'controller' => $module_data['controller'] ?? '',
-                        'provider' => $module_data['provider'] ?? '',
-                        'author_url' => $module_data['author_url'] ?? $module_data['link'] ?? '',
-                        'files' => $module_data['files'] ?? []
-                    ];
-                    
-                    // Зберігаємо в JSON файл
-                    $json_file = $module_dir . 'opencart-module.json';
-                    $json_content = json_encode($json_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                    
-                    if (file_put_contents($json_file, $json_content)) {
+            $dirs = scandir($modules_dir);
+            foreach ($dirs as $dir) {
+                if ($dir === '.' || $dir === '..') {
+                    continue;
+                }
+                
+                $json_file = $modules_dir . $dir . '/opencart-module.json';
+                if (file_exists($json_file)) {
+                    try {
+                        $json_content = file_get_contents($json_file);
+                        $module_data = json_decode($json_content, true);
+                        
+                        if (!$module_data || !isset($module_data['code'])) {
+                            $result['errors'][] = 'Invalid JSON in ' . $json_file;
+                            continue;
+                        }
+                        
+                        $code = $module_data['code'];
+                        $name = $module_data['module_name'] ?? $module_data['name'] ?? $code;
+                        $version = $module_data['version'] ?? '1.0.0';
+                        $paths = $module_data['files'] ?? []; // У старій структурі файли були в 'files'
+                        
+                        // Вставляємо або оновлюємо в базі
+                        $this->db->query("INSERT INTO `" . DB_PREFIX . "gdt_modules` SET 
+                            `code` = '" . $this->db->escape($code) . "',
+                            `name` = '" . $this->db->escape($name) . "',
+                            `version` = '" . $this->db->escape($version) . "',
+                            `data` = '" . $this->db->escape(json_encode($module_data, JSON_UNESCAPED_UNICODE)) . "',
+                            `paths` = '" . $this->db->escape(json_encode($paths, JSON_UNESCAPED_UNICODE)) . "',
+                            `date_added` = NOW()
+                            ON DUPLICATE KEY UPDATE 
+                            `name` = '" . $this->db->escape($name) . "',
+                            `version` = '" . $this->db->escape($version) . "',
+                            `data` = '" . $this->db->escape(json_encode($module_data, JSON_UNESCAPED_UNICODE)) . "',
+                            `paths` = '" . $this->db->escape(json_encode($paths, JSON_UNESCAPED_UNICODE)) . "'");
+                        
                         $result['migrated']++;
-                        LoggerService::write('GDT Module Manager: Migrated module ' . $code . ' to ' . $json_file);
-                    } else {
-                        $result['errors'][] = 'Failed to write JSON file for module ' . $code;
+                        LoggerService::write('GDT Module Manager: Migrated module ' . $code . ' from JSON to database');
+                        
+                        // Видаляємо JSON файл після успішної міграції (за бажанням, але краще залишити як бекап або видалити якщо точно не треба)
+                        // @unlink($json_file);
+                        
+                    } catch (Exception $e) {
+                        $result['errors'][] = 'Error migrating module ' . $dir . ': ' . $e->getMessage();
                     }
-                } catch (Exception $e) {
-                    $result['errors'][] = 'Error migrating module: ' . $e->getMessage();
                 }
             }
             
-            // Після успішної міграції видаляємо таблицю
-            if (empty($result['errors'])) {
-                $this->db->query("DROP TABLE IF EXISTS `gdt_modules`");
-                LoggerService::info('Dropped gdt_modules table after successful migration', 'Model');
-            } else {
-                LoggerService::info('Migration completed with errors, table not dropped', 'Model');
-            }
+            // Якщо все пройшло успішно, можна видалити стару таблицю без префікса (якщо вона була)
+            $this->db->query("DROP TABLE IF EXISTS `gdt_modules`");
             
         } catch (Exception $e) {
             $result['errors'][] = 'Migration error: ' . $e->getMessage();
@@ -104,81 +113,7 @@ class ModelExtensionModuleGdtUpdater extends Model {
     }
     
     /**
-     * @deprecated Використовуйте тільки для міграції
-     * @return array
-     */
-    public function getModulesFromOpenCartModifications() {
-        try {
-            $table_exists_query = "SHOW TABLES LIKE '" . DB_PREFIX . "modification'";
-            $table_result = $this->db->query($table_exists_query);
-            
-            if ($table_result->num_rows > 0) {
-                $query = "SELECT * FROM `" . DB_PREFIX . "modification` WHERE `status` = 1";
-                $result = $this->db->query($query);
-                
-                $modules = [];
-                if ($result->num_rows > 0) {
-                    foreach ($result->rows as $row) {
-                        $modules[] = [
-                            'code' => $row['code'],
-                            'name' => $row['name'],
-                            'version' => isset($row['version']) ? $row['version'] : '1.0.0',
-                            'author' => isset($row['author']) ? $row['author'] : 'Unknown',
-                            'link' => isset($row['link']) ? $row['link'] : '',
-                            'description' => isset($row['xml']) ? $this->extractDescription($row['xml']) : '',
-                            'source' => 'opencart_modification',
-                            'modification_id' => $row['modification_id'],
-                            'date_added' => isset($row['date_added']) ? $row['date_added'] : '',
-                        ];
-                    }
-                }
-                return $modules;
-            }
-        } catch (Exception $e) {
-            LoggerService::write('GDT Module Manager: Error getting OpenCart modifications: ' . $e->getMessage());
-        }
-        
-        return [];
-    }
-    
-    /**
-     * @deprecated Використовуйте тільки для міграції
-     * @param string $code
-     * @return array|null
-     */
-    public function getModuleFromOpenCartModifications($code) {
-        try {
-            $table_exists_query = "SHOW TABLES LIKE '" . DB_PREFIX . "modification'";
-            $table_result = $this->db->query($table_exists_query);
-            
-            if ($table_result->num_rows > 0) {
-                $query = "SELECT * FROM `" . DB_PREFIX . "modification` WHERE `code` = '" . $this->db->escape($code) . "' AND `status` = 1 LIMIT 1";
-                $result = $this->db->query($query);
-                
-                if ($result->num_rows > 0) {
-                    $row = $result->row;
-                    return [
-                        'code' => $row['code'],
-                        'name' => $row['name'],
-                        'version' => isset($row['version']) ? $row['version'] : '1.0.0',
-                        'author' => isset($row['author']) ? $row['author'] : 'Unknown',
-                        'link' => isset($row['link']) ? $row['link'] : '',
-                        'description' => isset($row['xml']) ? $this->extractDescription($row['xml']) : '',
-                        'source' => 'opencart_modification',
-                        'modification_id' => $row['modification_id'],
-                        'date_added' => isset($row['date_added']) ? $row['date_added'] : '',
-                    ];
-                }
-            }
-        } catch (Exception $e) {
-            LoggerService::write('GDT Module Manager: Error getting OpenCart modification by code: ' . $e->getMessage());
-        }
-        
-        return null;
-    }
-    
-    /**
-     * Отримує модулі з бази даних (DEPRECATED)
+     * Отримує модулі з бази даних
      * 
      * @return array
      */
@@ -186,38 +121,43 @@ class ModelExtensionModuleGdtUpdater extends Model {
         $modules = [];
         
         try {
-            $query = "SELECT * FROM `gdt_modules`";
+            $query = "SELECT * FROM `" . DB_PREFIX . "gdt_modules` ORDER BY `date_added` DESC";
             $result = $this->db->query($query);
             
             if ($result->num_rows > 0) {
                 foreach ($result->rows as $row) {
                     $module_data = json_decode($row['data'], true);
-                    if ($module_data && isset($module_data['code'])) {
+                    if ($module_data) {
+                        $module_data['code'] = $row['code'];
+                        $module_data['paths'] = json_decode($row['paths'], true);
                         $modules[] = $module_data;
                     }
                 }
             }
         } catch (Exception $e) {
-            LoggerService::write('GDT Module Manager: gdt_modules table not available (deprecated): ' . $e->getMessage());
+            LoggerService::write('GDT Module Manager: Error getting modules from database: ' . $e->getMessage());
         }
         
         return $modules;
     }
     
     /**
-     * Отримує модуль з бази даних за кодом (DEPRECATED)
+     * Отримує модуль з бази даних за кодом
      * 
      * @param string $code
      * @return array|null
      */
     public function getModuleFromDatabase($code) {
         try {
-            $query = "SELECT * FROM `gdt_modules` WHERE `module_code` = '" . $this->db->escape($code) . "' LIMIT 1";
+            $query = "SELECT * FROM `" . DB_PREFIX . "gdt_modules` WHERE `code` = '" . $this->db->escape($code) . "' LIMIT 1";
             $result = $this->db->query($query);
             
             if ($result->num_rows > 0) {
-                $module_data = json_decode($result->row['data'], true);
+                $row = $result->row;
+                $module_data = json_decode($row['data'], true);
                 if ($module_data) {
+                    $module_data['code'] = $row['code'];
+                    $module_data['paths'] = json_decode($row['paths'], true);
                     return $module_data;
                 }
             }

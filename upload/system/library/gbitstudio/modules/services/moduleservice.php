@@ -1,132 +1,129 @@
-<?php
-
 namespace Gbitstudio\Modules\Services;
 
 /**
  * Сервіс для роботи з модулями
  * Відповідає за бізнес-логіку роботи з модулями
- * Читає дані тільки з opencart-module.json файлів
+ * Читає дані тільки з таблиці gdt_modules
  */
 class ModuleService {
+    private $db;
+    private $registry;
+    
+    public function __construct($registry) {
+        $this->registry = $registry;
+        $this->db = $registry->get('db');
+    }
     
     /**
      * Отримує список встановлених модулів
-     * Читає тільки з opencart-module.json файлів
+     * Читає з бази даних
      * 
      * @return array
      */
     public function getInstalledModules() {
-        return $this->getModulesFromJsonFiles();
+        return $this->getModulesFromDatabase();
     }
     
     /**
      * Отримує модуль за кодом
-     * Читає тільки з opencart-module.json файлів
      * 
      * @param string $code Код модуля
      * @return array|null
      */
     public function getModuleByCode($code) {
-        return $this->getModuleFromJsonFiles($code);
+        return $this->getModuleFromDatabase($code);
     }
     
     /**
-     * Отримує модулі з opencart-module.json файлів
-     * Шукає в DIR_SYSTEM/module/{code}/opencart-module.json
+     * Отримує модулі з бази даних
      * 
      * @return array
      */
-    private function getModulesFromJsonFiles() {
+    private function getModulesFromDatabase() {
         $modules = [];
         
         try {
-            $modules_dir = constant('DIR_SYSTEM') . 'modules/';
-            
-            if (!is_dir($modules_dir)) {
+            // Перевіряємо чи існує таблиця
+            $table_query = $this->db->query("SHOW TABLES LIKE '" . DB_PREFIX . "gdt_modules'");
+            if ($table_query->num_rows == 0) {
                 return $modules;
             }
             
-            $dirs = scandir($modules_dir);
-            foreach ($dirs as $dir) {
-                if ($dir === '.' || $dir === '..') {
-                    continue;
-                }
-                
-                $json_file = $modules_dir . $dir . '/opencart-module.json';
-                if (file_exists($json_file)) {
-                    $module_data = $this->parseJsonFile($json_file, $dir);
-                    if ($module_data) {
-                        $modules[] = $module_data;
+            $query = "SELECT * FROM `" . DB_PREFIX . "gdt_modules` ORDER BY `date_added` DESC";
+            $result = $this->db->query($query);
+            
+            if ($result->num_rows > 0) {
+                foreach ($result->rows as $row) {
+                    $module_data = json_decode($row['data'], true);
+                    if ($module_data && (isset($module_data['code']) || isset($row['code']))) {
+                        // Об'єднуємо метадані та шляхи
+                        $module_data['code'] = $row['code'];
+                        $module_data['paths'] = json_decode($row['paths'], true) ?: [];
+                        $module_data['source'] = 'database';
+                        
+                        $modules[] = $this->formatModuleData($module_data, $row['code']);
                     }
                 }
             }
         } catch (\Exception $e) {
-            LoggerService::error('Error getting modules from JSON files: ' . $e->getMessage(), 'ModuleService');
+            LoggerService::error('Error getting modules from database: ' . $e->getMessage(), 'ModuleService');
         }
         
         return $modules;
     }
     
     /**
-     * Отримує модуль з opencart-module.json файла за кодом
+     * Отримує модуль з бази даних за кодом
      * 
      * @param string $code
      * @return array|null
      */
-    private function getModuleFromJsonFiles($code) {
+    private function getModuleFromDatabase($code) {
         try {
-            $json_file = constant('DIR_SYSTEM') . 'modules/' . $code . '/opencart-module.json';
+            $query = "SELECT * FROM `" . DB_PREFIX . "gdt_modules` WHERE `code` = '" . $this->db->escape($code) . "' LIMIT 1";
+            $result = $this->db->query($query);
             
-            if (file_exists($json_file)) {
-                return $this->parseJsonFile($json_file, $code);
+            if ($result->num_rows > 0) {
+                $row = $result->row;
+                $module_data = json_decode($row['data'], true);
+                if ($module_data) {
+                    $module_data['code'] = $row['code'];
+                    $module_data['paths'] = json_decode($row['paths'], true) ?: [];
+                    $module_data['source'] = 'database';
+                    
+                    return $this->formatModuleData($module_data, $row['code']);
+                }
             }
         } catch (\Exception $e) {
-            LoggerService::error('Error getting module from JSON file: ' . $e->getMessage(), 'ModuleService');
+            LoggerService::error('Error getting module from database: ' . $e->getMessage(), 'ModuleService');
         }
         
         return null;
     }
     
     /**
-     * Парсить opencart-module.json файл
+     * Форматує дані модуля для однотипного використання
      * 
-     * @param string $file_path
+     * @param array $data
      * @param string $code
-     * @return array|null
+     * @return array
      */
-    private function parseJsonFile($file_path, $code) {
-        if (!file_exists($file_path)) {
-            return null;
-        }
-        
-        try {
-            $json_content = file_get_contents($file_path);
-            $data = json_decode($json_content, true);
-            
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                LoggerService::error('JSON parse error in ' . $file_path . ': ' . json_last_error_msg(), 'ModuleService');
-                return null;
-            }
-            
-            return [
-                'code' => $data['code'] ?? $code,
-                'name' => $data['module_name'] ?? $data['name'] ?? $code,
-                'module_name' => $data['module_name'] ?? $data['name'] ?? $code,
-                'version' => $data['version'] ?? '1.0.0',
-                'author' => $data['creator_name'] ?? $data['author'] ?? 'Unknown',
-                'creator_name' => $data['creator_name'] ?? $data['author'] ?? 'Unknown',
-                'author_url' => $data['author_url'] ?? ($data['link'] ?? ''),
-                'link' => $data['link'] ?? ($data['author_url'] ?? ''),
-                'description' => $data['description'] ?? '',
-                'controller' => $data['controller'] ?? '',
-                'provider' => $data['provider'] ?? '',
-                'files' => $data['files'] ?? [],
-                'source' => 'opencart_module_json',
-                'file_path' => $file_path
-            ];
-        } catch (\Exception $e) {
-            LoggerService::error('Error parsing JSON file ' . $file_path . ': ' . $e->getMessage(), 'ModuleService');
-            return null;
-        }
+    private function formatModuleData($data, $code) {
+        return [
+            'code' => $data['code'] ?? $code,
+            'name' => $data['module_name'] ?? $data['name'] ?? $code,
+            'module_name' => $data['module_name'] ?? $data['name'] ?? $code,
+            'version' => $data['version'] ?? '1.0.0',
+            'author' => $data['creator_name'] ?? $data['author'] ?? 'Unknown',
+            'creator_name' => $data['creator_name'] ?? $data['author'] ?? 'Unknown',
+            'author_url' => $data['author_url'] ?? ($data['link'] ?? ''),
+            'link' => $data['link'] ?? ($data['author_url'] ?? ''),
+            'description' => $data['description'] ?? '',
+            'controller' => $data['controller'] ?? '',
+            'provider' => $data['provider'] ?? '',
+            'files' => $data['files'] ?? [],
+            'paths' => $data['paths'] ?? [],
+            'source' => $data['source'] ?? 'database'
+        ];
     }
 }
