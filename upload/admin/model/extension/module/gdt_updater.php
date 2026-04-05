@@ -192,12 +192,14 @@ class ModelExtensionModuleGdtUpdater extends Model {
         $autoUpdateService = $this->getServiceFactory()->getAutoUpdateService();
         $result = $autoUpdateService->autoCheckAndUpdate();
         
+        $this->load->language('extension/module/gdt_updater');
+        
         if (!empty($result['updated'])) {
-            $this->session->data['success'] = 'Автообновлены модули: ' . implode(', ', $result['updated']);
+            $this->session->data['success'] = sprintf($this->language->get('text_auto_updated'), implode(', ', $result['updated']));
         }
 
         if (!empty($result['errors'])) {
-            $this->session->data['warning'] = 'Ошибки автообновления: ' . implode('; ', $result['errors']);
+            $this->session->data['warning'] = sprintf($this->language->get('error_auto_update_failed'), implode('; ', $result['errors']));
         }
     }
 

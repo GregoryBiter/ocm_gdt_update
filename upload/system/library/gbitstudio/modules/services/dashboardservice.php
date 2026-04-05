@@ -38,13 +38,13 @@ class DashboardService {
             $installed_modules = $this->moduleService->getInstalledModules();
             
             if (empty($installed_modules)) {
-                $data['error_message'] = 'Нет установленных модулей';
+                $data['error_message'] = 'text_no_installed_modules';
                 return $data;
             }
             
             $server_url = $this->getServerUrl();
             if (empty($server_url)) {
-                $data['error_message'] = 'Не настроен сервер обновлений';
+                $data['error_message'] = 'text_server_not_configured';
                 return $data;
             }
             
@@ -56,13 +56,15 @@ class DashboardService {
             $data['no_updates'] = ($data['total_updates'] == 0);
             
             if ($data['no_updates'] && empty($data['error_message']) && empty($data['success_message'])) {
-                $data['success_message'] = 'Все модули обновлены до последних версий';
+                $data['success_message'] = 'text_all_updated';
             } elseif ($data['total_updates'] > 0 && empty($data['error_message']) && empty($data['success_message'])) {
-                $data['success_message'] = sprintf('Найдено %d обновлений', $data['total_updates']);
+                $data['success_message'] = 'text_updates_count';
+                $data['success_args'] = [$data['total_updates']];
             }
             
         } catch (\Exception $e) {
-            $data['error_message'] = 'Ошибка: ' . $e->getMessage();
+            $data['error_message'] = 'error_general';
+            $data['error_args'] = [$e->getMessage()];
         }
         
         return $data;
@@ -85,9 +87,11 @@ class DashboardService {
             
             if (is_array($update_info) && isset($update_info['error'])) {
                 if ($update_info['error'] == 'curl') {
-                    $data['error_message'] = 'Ошибка cURL: ' . ($update_info['message'] ?: 'Неизвестная ошибка сети');
+                    $data['error_message'] = 'error_curl';
+                    $data['error_args'] = [$update_info['message'] ?: 'Unknown network error'];
                 } elseif ($update_info['error'] == 'http') {
-                    $data['error_message'] = 'Ошибка HTTP: ' . ($update_info['code'] ?: 'Неизвестная ошибка сервера');
+                    $data['error_message'] = 'error_http';
+                    $data['error_args'] = [$update_info['code'] ?: 'Unknown server error'];
                 }
                 continue;
             }
@@ -127,13 +131,13 @@ class DashboardService {
             $installed_modules = $this->moduleService->getInstalledModules();
             
             if (empty($installed_modules)) {
-                $json['error'] = 'Нет установленных модулей';
+                $json['error'] = 'text_no_installed_modules';
                 return $json;
             }
             
             $server_url = $this->getServerUrl();
             if (empty($server_url)) {
-                $json['error'] = 'Не настроен сервер обновлений';
+                $json['error'] = 'text_server_not_configured';
                 return $json;
             }
             
@@ -159,12 +163,17 @@ class DashboardService {
             
             $json['updates'] = $available_updates;
             $json['total_updates'] = count($available_updates);
-            $json['success'] = count($available_updates) > 0 ? 
-                sprintf('Найдено %d обновлений', count($available_updates)) : 
-                'Все модули обновлены до последних версий';
+            
+            if (count($available_updates) > 0) {
+                $json['success'] = 'text_updates_count';
+                $json['success_args'] = [count($available_updates)];
+            } else {
+                $json['success'] = 'text_all_updated';
+            }
                 
         } catch (\Exception $e) {
-            $json['error'] = 'Ошибка: ' . $e->getMessage();
+            $json['error'] = 'error_general';
+            $json['error_args'] = [$e->getMessage()];
         }
         
         return $json;

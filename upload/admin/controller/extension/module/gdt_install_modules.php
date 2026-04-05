@@ -27,12 +27,12 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
     public function store() {
         $this->load->language('extension/module/gdt_install_modules');
         
-        $this->document->setTitle($this->language->get('heading_title') . ' - Магазин модулей');
+        $this->document->setTitle($this->language->get('heading_title') . ' - ' . $this->language->get('text_store'));
         
         $data = $this->getCommonData();
         $data['current_page'] = 'store';
-        $data['page_title'] = 'Магазин модулей';
-        $data['page_description'] = 'Найдите и установите модули из официального каталога';
+        $data['page_title'] = $this->language->get('text_store');
+        $data['page_description'] = $this->language->get('text_store_desc');
         
         // AJAX URLs для этой страницы
         $data['get_modules_url'] = html_entity_decode($this->url->link('extension/module/gdt_install_modules/getStoreModules', 'user_token=' . $this->session->data['user_token'], true));
@@ -52,12 +52,12 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
     public function featured() {
         $this->load->language('extension/module/gdt_install_modules');
         
-        $this->document->setTitle($this->language->get('heading_title') . ' - Рекомендуемые модули');
+        $this->document->setTitle($this->language->get('heading_title') . ' - ' . $this->language->get('text_featured'));
         
         $data = $this->getCommonData();
         $data['current_page'] = 'featured';
-        $data['page_title'] = 'Рекомендуемые модули';
-        $data['page_description'] = 'Модули, рекомендованные нашими экспертами';
+        $data['page_title'] = $this->language->get('text_featured');
+        $data['page_description'] = $this->language->get('text_featured_desc');
         
         // AJAX URLs для этой страницы
         $data['get_modules_url'] = html_entity_decode($this->url->link('extension/module/gdt_install_modules/getFeaturedModules', 'user_token=' . $this->session->data['user_token'], true));
@@ -76,12 +76,12 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
     public function popular() {
         $this->load->language('extension/module/gdt_install_modules');
         
-        $this->document->setTitle($this->language->get('heading_title') . ' - Популярные модули');
+        $this->document->setTitle($this->language->get('heading_title') . ' - ' . $this->language->get('text_popular'));
         
         $data = $this->getCommonData();
         $data['current_page'] = 'popular';
-        $data['page_title'] = 'Популярные модули';
-        $data['page_description'] = 'Самые популярные модули среди пользователей';
+        $data['page_title'] = $this->language->get('text_popular');
+        $data['page_description'] = $this->language->get('text_popular_desc');
         
         // AJAX URLs для этой страницы
         $data['get_modules_url'] = html_entity_decode($this->url->link('extension/module/gdt_install_modules/getPopularModules', 'user_token=' . $this->session->data['user_token'], true));
@@ -100,12 +100,12 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
     public function newest() {
         $this->load->language('extension/module/gdt_install_modules');
         
-        $this->document->setTitle($this->language->get('heading_title') . ' - Новые модули');
+        $this->document->setTitle($this->language->get('heading_title') . ' - ' . $this->language->get('text_newest'));
         
         $data = $this->getCommonData();
         $data['current_page'] = 'newest';
-        $data['page_title'] = 'Новые модули';
-        $data['page_description'] = 'Последние добавленные модули';
+        $data['page_title'] = $this->language->get('text_newest');
+        $data['page_description'] = $this->language->get('text_newest_desc');
         
         // AJAX URLs для этой страницы
         $data['get_modules_url'] = html_entity_decode($this->url->link('extension/module/gdt_install_modules/getNewestModules', 'user_token=' . $this->session->data['user_token'], true));
@@ -124,12 +124,12 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
     public function search() {
         $this->load->language('extension/module/gdt_install_modules');
         
-        $this->document->setTitle($this->language->get('heading_title') . ' - Поиск модулей');
+        $this->document->setTitle($this->language->get('heading_title') . ' - ' . $this->language->get('text_search'));
         
         $data = $this->getCommonData();
         $data['current_page'] = 'search';
-        $data['page_title'] = 'Поиск модулей';
-        $data['page_description'] = 'Найдите нужный модуль по ключевым словам';
+        $data['page_title'] = $this->language->get('text_search');
+        $data['page_description'] = $this->language->get('text_search_desc');
         
         // AJAX URLs для этой страницы
         $data['search_modules_url'] = html_entity_decode($this->url->link('extension/module/gdt_install_modules/searchModules', 'user_token=' . $this->session->data['user_token'], true));
@@ -274,7 +274,7 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
         
         if (empty($query)) {
             $json = array(
-                'error' => 'Поисковый запрос не может быть пустым'
+                'error' => $this->language->get('error_query_empty')
             );
         } else {
             try {
@@ -336,7 +336,7 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
         
         if (empty($query)) {
             $json = array(
-                'error' => 'Поисковый запрос не может быть пустым'
+                'error' => $this->language->get('error_query_empty')
             );
         } else {
             try {
@@ -371,9 +371,9 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
         $json = array();
         
         if ($this->request->server['REQUEST_METHOD'] != 'POST') {
-            $json['error'] = 'Неверный метод запроса';
+            $json['error'] = $this->language->get('error_method_invalid');
         } elseif (!isset($this->request->post['module_code']) || empty($this->request->post['module_code'])) {
-            $json['error'] = 'Не указан код модуля';
+            $json['error'] = $this->language->get('error_code_not_found');
         } else {
             $module_code = $this->request->post['module_code'];
             $version = isset($this->request->post['version']) ? $this->request->post['version'] : 'latest';
@@ -389,7 +389,7 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
                 }
                 
                 if (empty($server_url)) {
-                    $json['error'] = 'Не настроен сервер модулей';
+                    $json['error'] = $this->language->get('error_server_not_configured');
                 } else {
                     $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
                     
@@ -398,21 +398,21 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
                     $download_result = $updateService->downloadModule($server_url, $module_code, $version, $api_key);
                     
                     if (!$download_result['success']) {
-                        $json['error'] = 'Ошибка загрузки модуля: ' . ($download_result['error'] ?? 'Неизвестная ошибка');
+                        $json['error'] = sprintf($this->language->get('error_download_failed'), ($download_result['error'] ?? 'Unknown error'));
                     } else {
                         // Устанавливаем модуль
                         $installService = $this->getServiceFactory()->getInstallService();
                         $install_result = $installService->installModule($download_result['file_path'], $module_code);
                         
                         if ($install_result === true) {
-                            $json['success'] = sprintf('Модуль %s успешно установлен', $module_code);
+                            $json['success'] = sprintf($this->language->get('text_install_success'), $module_code);
                             
                             // Очищаем кеш
                             $this->cache->delete('*');
                             
                             LoggerService::write('GDT Install Modules: Successfully installed module ' . $module_code);
                         } else {
-                            $json['error'] = is_string($install_result) ? $install_result : 'Ошибка установки модуля';
+                            $json['error'] = is_string($install_result) ? $install_result : $this->language->get('error_install_failed');
                             LoggerService::write('GDT Install Modules: Error installing module ' . $module_code . ': ' . $json['error']);
                         }
                         
@@ -423,7 +423,7 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
                     }
                 }
             } catch (Exception $e) {
-                $json['error'] = 'Ошибка: ' . $e->getMessage();
+                $json['error'] = sprintf($this->language->get('error_general'), $e->getMessage());
                 LoggerService::write('GDT Install Modules error: ' . $e->getMessage());
             }
         }

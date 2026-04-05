@@ -42,12 +42,15 @@ $_['text_updating']          = 'Update in progress for %s...';
 $_['text_deleting']          = 'Deleting module %s...';
 $_['text_mass_deleting']     = 'Mass deletion in progress...';
 $_['text_check_completed']   = 'Update check completed';
+$_['text_update_available']  = 'Module update available!';
 $_['error_save']             = 'Error saving settings';
 $_['error_check']            = 'Error checking updates';
 $_['error_empty_response']   = 'Server returned an empty response';
 $_['error_auto_update']      = 'Error toggling auto-update';
 $_['error_mass_delete']      = 'Error during mass deletion';
 $_['text_deleted_count']     = 'Modules deleted: %s';
+$_['text_auto_updated']      = 'Auto-updated modules: %s';
+$_['error_auto_update_failed'] = 'Auto-update errors: %s';
 $_['error_occurred']         = 'An error occurred';
 
 // Column

@@ -716,7 +716,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $this->model_setting_event->addEvent('auto_update_menu', 'admin/view/common/column_left/before', 'extension/module/gdt_updater/menuAdmin');
 
         // Логируем успешную установку
-        LoggerService::write('GDT Updater: События добавлены, таблица создана, модуль установлен.');
+        LoggerService::write('GDT Updater: Events added, table created, module installed.');
     }
 
     public function uninstall()
@@ -764,11 +764,11 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         if ($response) {
             $data = json_decode($response, true);
             if (isset($data['update_available']) && $data['update_available']) {
-                $this->session->data['success'] = 'Доступно обновление модуля!';
+                $this->session->data['success'] = $this->language->get('text_update_available');
             }
         }
 
-        $this->session->data['success'] = 'Проверка обновлений завершена.';
+        $this->session->data['success'] = $this->language->get('text_check_completed');
 
     }
 
@@ -818,10 +818,10 @@ class ControllerExtensionModuleGdtUpdater extends Controller
     public function autoCheckEvent($route, &$data, &$output)
     {
         // Загружаем модель автообновления
-        $this->load->model('extension/module/gdt_update');
+        $this->load->model('extension/module/gdt_updater');
         
         // Запускаем автопроверку и обновление
-        $this->model_extension_module_gdt_update->autoCheckUpdate();
+        $this->model_extension_module_gdt_updater->autoCheckUpdate();
     }
 
 

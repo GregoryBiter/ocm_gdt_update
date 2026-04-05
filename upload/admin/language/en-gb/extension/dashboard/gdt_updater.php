@@ -15,8 +15,12 @@ $_['text_action']       = 'Action';
 $_['text_update']       = 'Update';
 $_['text_available']    = 'Available';
 $_['text_updates_found'] = 'Updates found';
-$_['text_no_updates']   = 'All modules are up to date';
-$_['text_check_updates'] = 'Check for Updates';
+$_['text_no_updates']       = 'All modules are up to date';
+$_['text_all_updated']     = 'All modules are updated to the latest versions';
+$_['text_updates_count']   = 'Found %d updates';
+$_['text_check_updates']    = 'Check for Updates';
+$_['text_no_installed_modules'] = 'No GDT modules installed';
+$_['text_server_not_configured'] = 'Update server not configured';
 
 // Entry
 $_['entry_width']       = 'Width';
@@ -28,4 +32,8 @@ $_['button_save']       = 'Save';
 $_['button_cancel']     = 'Cancel';
 
 // Error
-$_['error_permission']  = 'Warning: You do not have permission to modify GDT Updater dashboard!';
+$_['error_permission']      = 'Warning: You do not have permission to modify GDT Updater dashboard!';
+$_['error_general']         = 'Error: %s';
+$_['error_curl']            = 'cURL Error: %s';
+$_['error_http']            = 'HTTP Error: %s';
+?>
