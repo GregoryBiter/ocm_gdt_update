@@ -17,7 +17,7 @@ class LoggerService {
      */
     private static function getLog() {
         if (self::$log === null) {
-            self::$log = new \Log('gdt_modules.log');
+            self::$log = new \Log('ocm_modules.log');
         }
         return self::$log;
     }

@@ -733,7 +733,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         // Очищаем массив автообновления
         $this->saveModuleSettings(array('module_gdt_updater_auto_modules' => array()));
 
-        // Видаляємо таблицю модулів
+        // Legacy cleanup
         $this->db->query("DROP TABLE IF EXISTS `" . DB_PREFIX . "gdt_modules` ");
     }
 
