@@ -62,7 +62,7 @@ class InstallService {
 
             // Етап 3: Обробка XML
             $xml_result = $this->processModuleXml($extract_dir, $extension_install_id);
-            if ($xml_result !== true) {
+            if ($xml_result !== true && $xml_result !== false) {
                 throw new \Exception('XML processing error: ' . $xml_result);
             }
             
@@ -201,7 +201,7 @@ class InstallService {
         $xml_file = $extract_dir . '/install.xml';
 
         if (!is_file($xml_file)) {
-            return 'install.xml is required';
+            return false;
         }
 
         $this->registry->get('load')->model('setting/modification');
