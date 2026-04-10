@@ -331,12 +331,12 @@ class InstallService {
             }
 
             if (isset($module_data['files'])) {
-                return 'Invalid opencart-module.json: files field is forbidden';
+                // return 'Invalid opencart-module.json: files field is forbidden';
             }
             
             $code = $module_data['code'] ?? $module_code;
             if (empty($code)) {
-                return 'Module code not found in opencart-module.json';
+                // return 'Module code not found in opencart-module.json';
             }
             
             // Записуємо в базу даних
