@@ -132,140 +132,60 @@
 </div>
 
 <style>
-/* Стили для страницы установки модулей */
-.nav-tabs {
-    border-bottom: 2px solid #007cba;
-    margin-bottom: 0;
+/* WordPress-styled App Store CSS */
+.pw-panel { border: none; box-shadow: 0 1px 1px rgba(0,0,0,.04); border-radius: 4px; }
+.pw-panel-heading { background: #fff !important; padding: 15px 20px; border-bottom: 1px solid #ccd0d4; }
+.pw-panel-heading .panel-title { font-size: 18px; font-weight: 400; color: #1d2327; }
+
+/* Filter Navigation */
+.nav-tabs { border-bottom: 1px solid #ccd0d4; margin-bottom: 20px; padding-left: 10px; }
+.nav-tabs > li > a { border: none; color: #2271b1; padding: 10px 15px; font-size: 14px; font-weight: 400; background: transparent !important; }
+.nav-tabs > li > a:hover { color: #135e96; }
+.nav-tabs > li.active > a, .nav-tabs > li.active > a:hover, .nav-tabs > li.active > a:focus {
+    color: #1d2327;
+    font-weight: 600;
+    border-bottom: 3px solid #2271b1;
 }
 
-.nav-tabs > li > a {
-    color: #666;
-    border: none;
-    border-radius: 0;
-    padding: 12px 20px;
-    font-weight: 500;
-}
-
-.nav-tabs > li.active > a,
-.nav-tabs > li.active > a:hover,
-.nav-tabs > li.active > a:focus {
-    color: #007cba;
-    background-color: #fff;
-    border: none;
-    border-bottom: 3px solid #007cba;
-}
-
-.nav-tabs > li > a:hover {
-    background-color: #f8f9fa;
-    border: none;
-}
-
-.tab-content {
-    background: #fff;
-    border: 1px solid #ddd;
-    border-top: none;
-    border-radius: 0 0 4px 4px;
-}
-
-.tab-pane {
-    padding: 0;
-}
-
-.loading-content {
-    padding: 60px 20px;
-    color: #666;
-}
-
-.loading-content i {
-    color: #007cba;
-    margin-bottom: 15px;
-}
-
-/* Сетка модулей */
+/* Modules Grid */
 .modules-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
     gap: 20px;
-    padding: 20px;
 }
 
 .module-card {
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 20px;
     background: #fff;
-    transition: all 0.2s ease;
-    position: relative;
-    overflow: hidden;
-}
-
-.module-card:hover {
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    transform: translateY(-2px);
-}
-
-.module-card.featured {
-    border-color: #ffc107;
-    background: linear-gradient(135deg, #fff9e6 0%, #fff 50%);
-}
-
-.module-card.featured::before {
-    content: "Рекомендуемый";
-    position: absolute;
-    top: 10px;
-    right: -25px;
-    background: #ffc107;
-    color: #333;
-    padding: 2px 30px;
-    font-size: 11px;
-    font-weight: 600;
-    transform: rotate(45deg);
-    text-transform: uppercase;
-}
-
-.module-header {
+    border: 1px solid #c3c4c7;
     display: flex;
+    flex-direction: column;
     justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 12px;
+}
+.module-card.featured { border-left: 4px solid #b32d2e; }
+
+/* Top Section: Icon, Title, Author, Description */
+.pw-plugin-card-top {
+    padding: 20px;
+    border-bottom: 1px solid #f0f0f1;
+    min-height: 180px;
 }
 
-.module-title {
+.pw-plugin-card-title {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+.pw-plugin-card-title h3 {
+    margin: 0;
     font-size: 16px;
     font-weight: 600;
-    color: #333;
-    margin: 0;
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    line-height: 1.4;
+    color: #1d2327;
 }
 
-.module-icon {
-    width: 24px;
-    height: 24px;
-    background: #007cba;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 12px;
-}
-
-.module-version {
-    background: #e9ecef;
-    color: #495057;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 500;
-    margin-left: 10px;
-}
-
-.module-description {
-    color: #666;
-    font-size: 14px;
+.pw-plugin-card-desc {
+    color: #3c434a;
+    font-size: 13px;
     line-height: 1.5;
     margin-bottom: 15px;
     display: -webkit-box;
@@ -274,173 +194,50 @@
     overflow: hidden;
 }
 
-.module-meta {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-bottom: 15px;
-    font-size: 13px;
-    color: #666;
-}
-
-.module-meta-item {
+/* Bottom Section: Installs, Rating, Install Button */
+.pw-plugin-card-bottom {
+    background: #f6f7f7;
+    padding: 15px 20px;
+    border-top: 1px solid #f0f0f1;
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
 
-.module-meta-label {
+.pw-plugin-action { flex: 1; }
+.install-btn {
+    background: #f6f7f7;
+    border: 1px solid #2271b1;
+    color: #2271b1;
+    padding: 4px 12px;
+    border-radius: 3px;
+    font-size: 13px;
+    text-decoration: none;
+    cursor: pointer;
     font-weight: 600;
-    color: #333;
+    transition: all 0.2s;
 }
+.install-btn:hover { background: #f0f0f1; color: #135e96; border-color: #135e96; }
+.install-btn.installed { background: #f6f7f7; color: #2c3338; border-color: #8c8f94; cursor: default; }
 
-.module-rating {
+.module-meta-info {
+    font-size: 12px;
+    color: #8c8f94;
+    text-align: right;
     display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: 4px;
 }
 
-.module-rating .stars {
-    color: #ffc107;
-}
+.search-form { padding: 20px 0; }
+.loading-content { text-align: center; padding: 60px; color: #8c8f94; }
 
-.module-rating .count {
-    color: #666;
-    font-size: 12px;
-}
+.no-modules { text-align: center; padding: 60px 20px; color: #8c8f94; }
+.no-modules i { font-size: 48px; color: #dcdcde; margin-bottom: 15px; }
+.no-modules h3 { font-size: 18px; color: #3c434a; margin-bottom: 10px; }
 
-.module-price {
-    font-weight: 600;
-    color: #28a745;
-}
-
-.module-price.paid {
-    color: #007cba;
-}
-
-.module-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-}
-
-.install-btn {
-    background: #28a745;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.2s ease;
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    flex: 1;
-    justify-content: center;
-}
-
-.install-btn:hover {
-    background: #218838;
-    text-decoration: none;
-    color: white;
-}
-
-.install-btn:disabled {
-    background: #6c757d;
-    cursor: not-allowed;
-}
-
-.install-btn.installed {
-    background: #6c757d;
-    cursor: not-allowed;
-}
-
-.install-btn.update-available {
-    background: #ffc107;
-    color: #333;
-}
-
-.install-btn.update-available:hover {
-    background: #e0a800;
-    color: #333;
-}
-
-.module-links {
-    display: flex;
-    gap: 10px;
-}
-
-.module-link {
-    color: #007cba;
-    text-decoration: none;
-    font-size: 13px;
-    padding: 4px 8px;
-    border: 1px solid #007cba;
-    border-radius: 4px;
-    transition: all 0.2s ease;
-}
-
-.module-link:hover {
-    background: #007cba;
-    color: white;
-    text-decoration: none;
-}
-
-.search-form {
-    background: #f8f9fa;
-    padding: 20px;
-    border-radius: 4px;
-    margin-bottom: 20px;
-}
-
-.no-modules {
-    text-align: center;
-    padding: 60px 20px;
-    color: #666;
-}
-
-.no-modules i {
-    font-size: 48px;
-    color: #ddd;
-    margin-bottom: 15px;
-}
-
-.no-modules h3 {
-    color: #666;
-    margin-bottom: 8px;
-    font-size: 18px;
-}
-
-.no-modules p {
-    color: #999;
-    font-size: 14px;
-    margin: 0;
-}
-
-/* Адаптивность */
 @media (max-width: 768px) {
-    .modules-grid {
-        grid-template-columns: 1fr;
-        padding: 15px;
-        gap: 15px;
-    }
-    
-    .module-meta {
-        grid-template-columns: 1fr;
-    }
-    
-    .module-actions {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    
-    .install-btn {
-        margin-bottom: 10px;
-    }
+    .modules-grid { grid-template-columns: 1fr; }
 }
 </style>
 
@@ -588,97 +385,44 @@ function renderModules(modules, category) {
             
             html += '<div class="' + cardClass + '">';
             
-            html += '<div class="module-header">';
-            html += '<h3 class="module-title">';
-            html += '<span class="module-icon"><i class="fa fa-puzzle-piece"></i></span>';
-            html += (module.name || 'Неизвестный модуль');
-            html += '</h3>';
-            html += '<span class="module-version">v' + (module.version || '1.0') + '</span>';
+            html += '<div class="pw-plugin-card-top">';
+            html += '<div class="pw-plugin-card-title">';
+            html += '<h3>' + (module.name || 'Неизвестный модуль') + ' <span style="font-weight: normal; font-size: 12px; color: #8c8f94;">v' + (module.version || '1.0') + '</span></h3>';
             html += '</div>';
-            
-            html += '<div class="module-description">' + (module.description || 'Описание отсутствует') + '</div>';
-            
-            html += '<div class="module-meta">';
-            
+            html += '<div class="pw-plugin-card-desc">';
+            html += '<p>' + (module.description || 'Описание отсутствует') + '</p>';
+            html += '</div>';
             if (module.author) {
-                html += '<div class="module-meta-item">';
-                html += '<span class="module-meta-label">Автор:</span>';
-                html += '<span>' + module.author + '</span>';
-                html += '</div>';
+                html += '<p style="font-size: 13px; color: #3c434a;">Автор: ' + module.author + '</p>';
             }
-            
-            if (module.downloads) {
-                html += '<div class="module-meta-item">';
-                html += '<span class="module-meta-label">Загрузок:</span>';
-                html += '<span>' + module.downloads + '</span>';
-                html += '</div>';
-            }
-            
-            if (module.rating) {
-                html += '<div class="module-meta-item">';
-                html += '<span class="module-meta-label">Рейтинг:</span>';
-                html += '<div class="module-rating">';
-                html += '<span class="stars">';
-                for (var i = 1; i <= 5; i++) {
-                    if (i <= module.rating) {
-                        html += '<i class="fa fa-star"></i>';
-                    } else {
-                        html += '<i class="fa fa-star-o"></i>';
-                    }
-                }
-                html += '</span>';
-                if (module.rating_count) {
-                    html += '<span class="count">(' + module.rating_count + ')</span>';
-                }
-                html += '</div>';
-                html += '</div>';
-            }
-            
-            if (module.price !== undefined) {
-                html += '<div class="module-meta-item">';
-                html += '<span class="module-meta-label">Цена:</span>';
-                if (module.price === 0) {
-                    html += '<span class="module-price">Бесплатно</span>';
-                } else {
-                    html += '<span class="module-price paid">$' + module.price + '</span>';
-                }
-                html += '</div>';
-            }
-            
             html += '</div>';
             
-            html += '<div class="module-actions">';
+            html += '<div class="pw-plugin-card-bottom">';
+            html += '<div class="pw-plugin-action">';
             
-            // Проверяем статус установки модуля
             if (module.installed) {
-                // Модуль установлен
                 if (module.update_available) {
-                    // Доступно обновление
-                    html += '<button class="install-btn update-available" data-code="' + (module.code || '') + '" data-url="' + (module.download_url || '') + '">';
-                    html += '<i class="fa fa-refresh"></i> Обновить до v' + (module.version || '');
+                    html += '<button class="install-btn update-available" data-code="' + (module.code || '') + '" data-url="' + (module.download_url || '') + '" style="border-color: #d63638; color: #d63638;">';
+                    html += 'Обновить до v' + (module.version || '');
                     html += '</button>';
                 } else {
-                    // Установлена актуальная версия
-                    html += '<button class="install-btn installed" disabled>';
-                    html += '<i class="fa fa-check"></i> Установлен v' + (module.installed_version || '');
-                    html += '</button>';
+                    html += '<button class="install-btn installed" disabled>Установлен</button>';
                 }
             } else {
-                // Модуль не установлен
                 html += '<button class="install-btn" data-code="' + (module.code || '') + '" data-url="' + (module.download_url || '') + '">';
-                html += '<i class="fa fa-download"></i> Установить';
+                html += 'Установить';
                 html += '</button>';
             }
-            
-            html += '<div class="module-links">';
-            if (module.demo_url) {
-                html += '<a href="' + module.demo_url + '" target="_blank" class="module-link">Демо</a>';
+            html += '</div>';
+
+            html += '<div class="module-meta-info">';
+            if (module.rating) {
+                html += '<span>★ ' + module.rating + '</span>';
             }
-            if (module.info_url) {
-                html += '<a href="' + module.info_url + '" target="_blank" class="module-link">Подробнее</a>';
+            if (module.downloads) {
+                html += '<span>' + module.downloads + '+ скачиваний</span>';
             }
             html += '</div>';
-            
             html += '</div>';
             html += '</div>';
         });
