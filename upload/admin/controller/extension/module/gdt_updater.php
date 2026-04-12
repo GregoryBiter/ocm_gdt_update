@@ -177,6 +177,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $json['module_gdt_updater_server'] = $this->config->get('module_gdt_updater_server');
         $json['module_gdt_updater_api_key'] = $this->config->get('module_gdt_updater_api_key');
         $json['module_gdt_updater_status'] = $this->config->get('module_gdt_updater_status');
+        $json['module_gdt_updater_api_log'] = $this->config->get('module_gdt_updater_api_log');
         $json['module_gdt_updater_auto_modules'] = $this->config->get('module_gdt_updater_auto_modules') ?: array();
 
         $this->response->addHeader('Content-Type: application/json');
@@ -470,6 +471,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $current_settings['module_gdt_updater_server'] = $this->config->get('module_gdt_updater_server') ?: '';
         $current_settings['module_gdt_updater_api_key'] = $this->config->get('module_gdt_updater_api_key') ?: '';
         $current_settings['module_gdt_updater_status'] = $this->config->get('module_gdt_updater_status') ?: 0;
+        $current_settings['module_gdt_updater_api_log'] = $this->config->get('module_gdt_updater_api_log') ?: 0;
         $current_settings['module_gdt_updater_auto_modules'] = $this->config->get('module_gdt_updater_auto_modules') ?: array();
         
         // Объединяем с новыми настройками

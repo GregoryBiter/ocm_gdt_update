@@ -166,6 +166,15 @@ class ModuleCatalogService {
      * @return array
      */
     private function makeApiRequest($url, $post_data = [], $api_key = '') {
+        $is_logging = $this->config->get('module_gdt_updater_api_log');
+        
+        if ($is_logging) {
+            $masked_key = !empty($api_key) ? substr($api_key, 0, 4) . '...' . substr($api_key, -4) : 'none';
+            LoggerService::debug("API Request: POST " . $url, 'ModuleCatalog');
+            LoggerService::debug("API Headers: Content-Type: application/x-www-form-urlencoded, Accept: application/json, X-API-Key: " . $masked_key, 'ModuleCatalog');
+            LoggerService::debug("API Payload: " . json_encode($post_data), 'ModuleCatalog');
+        }
+
         $ch = curl_init();
         
         $headers = [
@@ -196,6 +205,12 @@ class ModuleCatalogService {
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $error = curl_error($ch);
+        
+        if ($is_logging) {
+            LoggerService::debug("API Response Code: " . $http_code, 'ModuleCatalog');
+            LoggerService::debug("API Response Body: " . (strlen($response) > 1000 ? substr($response, 0, 1000) . '...' : (string)$response), 'ModuleCatalog');
+        }
+        
         curl_close($ch);
         
         if ($error) {

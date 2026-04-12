@@ -106,6 +106,15 @@ class UpdateService {
             $headers[] = 'X-API-Key: ' . $api_key;
         }
         
+        $is_logging = $this->registry->get('config')->get('module_gdt_updater_api_log');
+        
+        if ($is_logging) {
+            $masked_key = !empty($api_key) ? substr($api_key, 0, 4) . '...' . substr($api_key, -4) : 'none';
+            LoggerService::debug("File Download Request: " . $download_url, 'UpdateService');
+            LoggerService::debug("File Download Headers: X-API-Key: " . $masked_key, 'UpdateService');
+            LoggerService::debug("File Download Payload: " . json_encode($post_data), 'UpdateService');
+        }
+        
         $ch = curl_init();
         curl_setopt_array($ch, [
             CURLOPT_URL => $download_url,
@@ -115,7 +124,8 @@ class UpdateService {
             CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => 2,
-            CURLOPT_HTTPHEADER => $headers
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_FAILONERROR => false
         ]);
         
         if (!empty($post_data)) {
@@ -126,6 +136,14 @@ class UpdateService {
         $data = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $error = curl_error($ch);
+        
+        if ($is_logging) {
+            LoggerService::debug("File Download Response Code: " . $http_code, 'UpdateService');
+            if ($error) {
+                LoggerService::debug("File Download Error: " . $error, 'UpdateService');
+            }
+        }
+        
         curl_close($ch);
         
         if ($error) {
@@ -154,6 +172,15 @@ class UpdateService {
      * @return array
      */
     private function executeApiRequest($url, $post_data, $timeout = 10, $api_key = '') {
+        $is_logging = $this->registry->get('config')->get('module_gdt_updater_api_log');
+        
+        if ($is_logging) {
+            $masked_key = !empty($api_key) ? substr($api_key, 0, 4) . '...' . substr($api_key, -4) : 'none';
+            LoggerService::debug("API Request: POST " . $url, 'UpdateService');
+            LoggerService::debug("API Headers: Content-Type: application/x-www-form-urlencoded, X-API-Key: " . $masked_key, 'UpdateService');
+            LoggerService::debug("API Payload: " . json_encode($post_data), 'UpdateService');
+        }
+
         $curl = curl_init();
         
         $headers = [
@@ -183,6 +210,11 @@ class UpdateService {
         $error = curl_error($curl);
         $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
         $content_type = curl_getinfo($curl, CURLINFO_CONTENT_TYPE);
+        
+        if ($is_logging) {
+            LoggerService::debug("API Response Code: " . $http_code, 'UpdateService');
+            LoggerService::debug("API Response Body: " . (strlen($response) > 1000 ? substr($response, 0, 1000) . '...' : (string)$response), 'UpdateService');
+        }
         
         curl_close($curl);
         

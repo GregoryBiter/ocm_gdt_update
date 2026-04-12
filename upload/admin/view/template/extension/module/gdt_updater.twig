@@ -43,14 +43,16 @@
                 <small class="help-block">Секретный ключ для доступа к серверу обновлений</small>
               </div>
               <div class="form-group">
-                <label for="input-status">Статус</label>
-                <select name="module_gdt_updater_status" id="input-status" class="form-control">
-                  <option value="1">Включен</option>
-                  <option value="0">Отключен</option>
-                </select>
-              </div>
-            </form>
-          </div>
+                <div class="form-group">
+                  <label for="input-api-log">Логирование API запросов</label>
+                  <select name="module_gdt_updater_api_log" id="input-api-log" class="form-control">
+                    <option value="1">Включено</option>
+                    <option value="0">Отключено</option>
+                  </select>
+                  <small class="help-block">Включает подробное логирование всех запросов к API (запросы и ответы)</small>
+                </div>
+              </form>
+            </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-default" data-dismiss="modal">Отмена</button>
             <button type="button" class="btn btn-primary" id="button-save-settings">Сохранить</button>
@@ -315,6 +317,7 @@ function loadSettings() {
             $('#input-server').val(json.module_gdt_updater_server || '');
             $('#input-api-key').val(json.module_gdt_updater_api_key || '');
             $('#input-status').val(json.module_gdt_updater_status || '0');
+            $('#input-api-log').val(json.module_gdt_updater_api_log || '0');
         },
         error: function() {
             showAlert('danger', 'Ошибка загрузки настроек');
