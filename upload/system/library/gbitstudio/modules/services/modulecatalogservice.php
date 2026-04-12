@@ -79,20 +79,19 @@ class ModuleCatalogService {
         
         $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
         
-        $url = rtrim($server_url, '/') . '/index.php?route=gdt_update_server/modules';
-        $url .= '&page=' . $page . '&limit=' . $limit;
+        $url = rtrim($server_url, '/') . '/api/v1/modules/list';
         
-        $post_data = [];
-        if (!empty($api_key)) {
-            $post_data['api_key'] = $api_key;
-        }
+        $post_data = [
+            'page' => $page,
+            'limit' => $limit
+        ];
         
-        $response = $this->makeApiRequest($url, $post_data);
+        $response = $this->makeApiRequest($url, $post_data, $api_key);
         
         if (isset($response['success']) && $response['success']) {
             return $response['modules'];
         } else {
-            throw new \Exception('Error getting modules: ' . (isset($response['error']) ? $response['error'] : 'Unknown error'));
+            throw new \Exception('Error getting modules: ' . (isset($response['error']) ? $response['error'] : (isset($response['message']) ? $response['message'] : 'Unknown error')));
         }
     }
     
@@ -110,27 +109,14 @@ class ModuleCatalogService {
         
         $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
         
-        $url = rtrim($server_url, '/') . '/index.php?route=gdt_update_server/modules';
+        $url = rtrim($server_url, '/') . '/api/v1/modules/list';
         
-        if (!empty($params)) {
-            foreach ($params as $key => $value) {
-                if (!empty($value)) {
-                    $url .= '&' . $key . '=' . urlencode($value);
-                }
-            }
-        }
-        
-        $post_data = [];
-        if (!empty($api_key)) {
-            $post_data['api_key'] = $api_key;
-        }
-        
-        $response = $this->makeApiRequest($url, $post_data);
+        $response = $this->makeApiRequest($url, $params, $api_key);
         
         if (isset($response['success']) && $response['success']) {
             return $response['modules'];
         } else {
-            throw new \Exception('Error getting modules: ' . (isset($response['error']) ? $response['error'] : 'Unknown error'));
+            throw new \Exception('Error getting modules: ' . (isset($response['error']) ? $response['error'] : (isset($response['message']) ? $response['message'] : 'Unknown error')));
         }
     }
     
@@ -179,8 +165,18 @@ class ModuleCatalogService {
      * @param array $post_data
      * @return array
      */
-    private function makeApiRequest($url, $post_data = []) {
+    private function makeApiRequest($url, $post_data = [], $api_key = '') {
         $ch = curl_init();
+        
+        $headers = [
+            'Content-Type: application/x-www-form-urlencoded',
+            'Accept: application/json',
+            'User-Agent: GDT-ModuleManager/1.0'
+        ];
+        
+        if (!empty($api_key)) {
+            $headers[] = 'X-API-Key: ' . $api_key;
+        }
         
         curl_setopt_array($ch, [
             CURLOPT_URL => $url,
@@ -189,14 +185,10 @@ class ModuleCatalogService {
             CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => 2,
-            CURLOPT_USERAGENT => 'GDT-ModuleManager/1.0',
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/x-www-form-urlencoded',
-                'Accept: application/json'
-            ]
+            CURLOPT_HTTPHEADER => $headers
         ]);
         
-        if (!empty($post_data)) {
+        if (true) { // Always use POST for the new list API
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
         }
