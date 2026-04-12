@@ -20,7 +20,7 @@ jobs:
         shell: bash
         run: |
           tag_name="${GITHUB_REF_NAME}"
-          archive_name="ocm_mass_product_action-${tag_name}.ocmod.zip"
+          archive_name="ocm_gdt_update-${tag_name}.ocmod.zip"
           echo "ARCHIVE_NAME=${archive_name}" >> "${GITHUB_ENV}"
 
       - name: Build OpenCart archive
