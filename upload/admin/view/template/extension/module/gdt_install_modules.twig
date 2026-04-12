@@ -379,6 +379,17 @@ function renderModules(modules, category) {
         
         modules.forEach(function(module) {
             var cardClass = 'module-card';
+            var moduleInfo = {
+                code: module.code || '',
+                name: module.name || '',
+                module_name: module.name || '',
+                version: module.version || '',
+                author: module.author || '',
+                description: module.description || '',
+                category: module.category || 'module'
+            };
+            var moduleInfoPayload = encodeURIComponent(JSON.stringify(moduleInfo));
+
             if (category === 'featured' || module.featured) {
                 cardClass += ' featured';
             }
@@ -402,14 +413,14 @@ function renderModules(modules, category) {
             
             if (module.installed) {
                 if (module.update_available) {
-                    html += '<button class="install-btn update-available" data-code="' + (module.code || '') + '" data-url="' + (module.download_url || '') + '" style="border-color: #d63638; color: #d63638;">';
+                    html += '<button class="install-btn update-available" data-code="' + (module.code || '') + '" data-url="' + (module.download_url || '') + '" data-version="' + (module.version || '') + '" data-module-info="' + moduleInfoPayload + '" style="border-color: #d63638; color: #d63638;">';
                     html += 'Обновить до v' + (module.version || '');
                     html += '</button>';
                 } else {
                     html += '<button class="install-btn installed" disabled>Установлен</button>';
                 }
             } else {
-                html += '<button class="install-btn" data-code="' + (module.code || '') + '" data-url="' + (module.download_url || '') + '">';
+                html += '<button class="install-btn" data-code="' + (module.code || '') + '" data-url="' + (module.download_url || '') + '" data-version="' + (module.version || '') + '" data-module-info="' + moduleInfoPayload + '">';
                 html += 'Установить';
                 html += '</button>';
             }
@@ -434,7 +445,7 @@ function renderModules(modules, category) {
 }
 
 // Установка/обновление модуля
-function installModule(moduleCode, downloadUrl, buttonElement, isUpdate) {
+function installModule(moduleCode, downloadUrl, moduleVersion, serverModuleInfo, buttonElement, isUpdate) {
     if (!moduleCode || !downloadUrl) {
         showAlert('danger', 'Недостаточно данных для установки модуля');
         return;
@@ -449,6 +460,8 @@ function installModule(moduleCode, downloadUrl, buttonElement, isUpdate) {
         type: 'POST',
         data: {
             module_code: moduleCode,
+            version: moduleVersion || '',
+            server_module_info: JSON.stringify(serverModuleInfo || {}),
             download_url: downloadUrl,
             user_token: userToken
         },
@@ -512,8 +525,18 @@ $(document).ready(function() {
         e.preventDefault();
         var moduleCode = $(this).data('code');
         var downloadUrl = $(this).data('url');
+        var moduleVersion = $(this).data('version');
+        var moduleInfoPayload = $(this).attr('data-module-info') || '';
+        var serverModuleInfo = {};
+        if (moduleInfoPayload) {
+            try {
+                serverModuleInfo = JSON.parse(decodeURIComponent(moduleInfoPayload));
+            } catch (e) {
+                serverModuleInfo = {};
+            }
+        }
         var isUpdate = $(this).hasClass('update-available');
-        installModule(moduleCode, downloadUrl, this, isUpdate);
+        installModule(moduleCode, downloadUrl, moduleVersion, serverModuleInfo, this, isUpdate);
     });
 });
 //--></script>

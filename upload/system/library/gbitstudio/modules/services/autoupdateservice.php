@@ -133,19 +133,19 @@ class AutoUpdateService {
      */
     private function performUpdate($module, $update_info, $server_url, $api_key) {
         try {
-            if (!isset($update_info['download_url'])) {
-                return 'Download URL not provided';
+            $target_version = isset($update_info['version']) ? $update_info['version'] : (isset($module['version']) ? $module['version'] : '0.0.0');
+
+            $download_result = $this->updateService->downloadModule($server_url, $module['code'], $target_version, $api_key);
+
+            if (!$download_result['success']) {
+                return $download_result['error'] ?? 'Failed to download module';
             }
-            
-            $temp_file = $this->updateService->downloadModule($update_info['download_url'], $module['code'], $api_key);
-            
-            if (!$temp_file) {
-                return 'Failed to download module';
+
+            $result = $this->installService->installModule($download_result['file_path'], $module['code'], $update_info);
+
+            if (!empty($download_result['file_path']) && file_exists($download_result['file_path'])) {
+                @unlink($download_result['file_path']);
             }
-            
-            $result = $this->installService->installModule($temp_file, $module['code']);
-            
-            @unlink($temp_file);
             
             return $result;
         } catch (\Exception $e) {

@@ -376,7 +376,25 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
             $json['error'] = 'Не указан код модуля';
         } else {
             $module_code = $this->request->post['module_code'];
-            $version = isset($this->request->post['version']) ? $this->request->post['version'] : 'latest';
+            $server_module_info = array();
+            if (isset($this->request->post['server_module_info'])) {
+                if (is_string($this->request->post['server_module_info'])) {
+                    $decoded = json_decode($this->request->post['server_module_info'], true);
+                    if (is_array($decoded)) {
+                        $server_module_info = $decoded;
+                    }
+                } elseif (is_array($this->request->post['server_module_info'])) {
+                    $server_module_info = $this->request->post['server_module_info'];
+                }
+            }
+
+            if (empty($server_module_info['code'])) {
+                $server_module_info['code'] = $module_code;
+            }
+
+            $version = isset($server_module_info['version']) && $server_module_info['version'] !== ''
+                ? $server_module_info['version']
+                : (isset($this->request->post['version']) ? $this->request->post['version'] : 'latest');
             
             try {
                 // Получаем URL сервера
@@ -402,7 +420,7 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
                     } else {
                         // Устанавливаем модуль
                         $installService = $this->getServiceFactory()->getInstallService();
-                        $install_result = $installService->installModule($download_result['file_path'], $module_code);
+                        $install_result = $installService->installModule($download_result['file_path'], $module_code, $server_module_info);
                         
                         if ($install_result === true) {
                             $json['success'] = sprintf('Модуль %s успешно установлен', $module_code);

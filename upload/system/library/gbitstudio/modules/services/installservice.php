@@ -20,9 +20,10 @@ class InstallService {
      * 
      * @param string $zip_file_path Шлях до ZIP файлу
      * @param string $module_code Код модуля
+     * @param array $server_module_info Метаданные модуля с сервера обновлений
      * @return bool|string true при успіху, рядок з помилкою при невдачі
      */
-    public function installModule($zip_file_path, $module_code = '') {
+    public function installModule($zip_file_path, $module_code = '', $server_module_info = array()) {
         LoggerService::info('Starting installation for ' . $module_code, 'InstallService');
 
         try {
@@ -67,7 +68,7 @@ class InstallService {
             }
             
             // Етап 4: Збереження в базу даних
-            $save_result = $this->saveModuleToDatabase($extract_dir, $module_code, $installed_paths);
+            $save_result = $this->saveModuleToDatabase($extract_dir, $module_code, $installed_paths, $server_module_info, $temp_file);
             if ($save_result !== true) {
                 throw new \Exception((string)$save_result);
             }
@@ -311,37 +312,32 @@ class InstallService {
      * @param string $extract_dir
      * @param string $module_code
      * @param array $paths
+     * @param array $server_module_info
+     * @param string $temp_file
      * @return bool|string
      */
-    private function saveModuleToDatabase($extract_dir, $module_code, $paths = []) {
+    private function saveModuleToDatabase($extract_dir, $module_code, $paths = [], $server_module_info = array(), $temp_file = '') {
         try {
             $this->ensureCoreTables();
 
-            // Шукаємо opencart-module.json у розпакованому архіві
-            $json_source = $extract_dir . '/opencart-module.json';
-            if (!file_exists($json_source)) {
-                return 'opencart-module.json is required';
-            }
-            
-            $json_content = file_get_contents($json_source);
-            $module_data = json_decode($json_content, true);
-            
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                return 'Invalid JSON in opencart-module.json: ' . json_last_error_msg();
+            $module_data = array();
+
+            if (is_array($server_module_info)) {
+                foreach ($server_module_info as $key => $value) {
+                    if ($value !== null && $value !== '') {
+                        $module_data[$key] = $value;
+                    }
+                }
             }
 
-            if (isset($module_data['files'])) {
-                // return 'Invalid opencart-module.json: files field is forbidden';
-            }
-            
-            $code = $module_data['code'] ?? $module_code;
+            $code = $module_data['code'] ?? $module_code ?? '';
             if (empty($code)) {
-                // return 'Module code not found in opencart-module.json';
+                return 'Module code is required';
             }
             
             // Записуємо в базу даних
             $name = $module_data['module_name'] ?? $module_data['name'] ?? $code;
-            $version = $this->resolveVersion($module_data, $extract_dir, $code);
+            $version = $this->resolveVersion($module_data, $extract_dir, $code, $server_module_info);
             $module_type = $module_data['type'] ?? 'module';
 
             $this->db->query("INSERT INTO `" . DB_PREFIX . "ocm_modules` SET 
@@ -380,7 +376,7 @@ class InstallService {
 
             $install_xml_file = $extract_dir . '/install.xml';
             $index_hash = is_file($install_xml_file) ? sha1_file($install_xml_file) : '';
-            $package_hash = is_file($extract_dir . '/opencart-module.json') ? sha1_file($extract_dir . '/opencart-module.json') : '';
+            $package_hash = is_file($temp_file) ? sha1_file($temp_file) : '';
 
             $this->db->query("INSERT INTO `" . DB_PREFIX . "ocm_module_versions` SET
                 `module_code` = '" . $this->db->escape($code) . "',
@@ -406,9 +402,9 @@ class InstallService {
         return $node ? $node->nodeValue : $default;
     }
 
-    private function resolveVersion(array $module_data, $extract_dir, $code) {
-        if (!empty($module_data['version'])) {
-            return (string)$module_data['version'];
+    private function resolveVersion(array $module_data, $extract_dir, $code, $server_module_info = array()) {
+        if (is_array($server_module_info) && !empty($server_module_info['version'])) {
+            return (string)$server_module_info['version'];
         }
 
         $install_xml = $extract_dir . '/install.xml';
@@ -423,6 +419,10 @@ class InstallService {
                     }
                 }
             }
+        }
+
+        if (!empty($module_data['version'])) {
+            return (string)$module_data['version'];
         }
 
         $query = $this->db->query("SELECT `version` FROM `" . DB_PREFIX . "modification` WHERE `code` = '" . $this->db->escape($code) . "' LIMIT 1");

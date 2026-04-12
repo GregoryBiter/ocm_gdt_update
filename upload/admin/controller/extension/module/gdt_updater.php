@@ -409,7 +409,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                             // Скачиваем и устанавливаем обновление через встроенный процесс OpenCart
                             $download_result = $this->getServiceFactory()->getUpdateService()->downloadModule($server_url, $module['code'], $update_info['version'], $api_key);
                             if ($download_result['success']) {
-                                $result = $this->getServiceFactory()->getInstallService()->installModule($download_result['file_path'], $module['code']);
+                                $result = $this->getServiceFactory()->getInstallService()->installModule($download_result['file_path'], $module['code'], $update_info);
                             } else {
                                 $result = $download_result['error'] ?? 'Ошибка загрузки модуля';
                             }
@@ -693,17 +693,6 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         
         // Створюємо нову таблицю
         $this->model_extension_module_gdt_updater->createTables();
-        
-        // Виконуємо міграцію даних з opencart-module.json в нову базу
-        $migration_result = $this->model_extension_module_gdt_updater->migrateFromJsonToDatabase();
-        
-        if ($migration_result['migrated'] > 0) {
-            LoggerService::write('GDT Updater: Migrated ' . $migration_result['migrated'] . ' modules from JSON to database');
-        }
-        
-        if (!empty($migration_result['errors'])) {
-            LoggerService::write('GDT Updater: Migration errors: ' . implode('; ', $migration_result['errors']));
-        }
         
         // Добавляем события
         $this->load->model('setting/event');

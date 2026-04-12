@@ -1,7 +1,7 @@
 {
     "name": "gbitstudio/ocm-gdt-update",
     "description": "OpenCart Module - GDT Update System",
-    "type": "opencart-module",
+    "type": "project",
     "license": "MIT",
     "authors": [
         {
