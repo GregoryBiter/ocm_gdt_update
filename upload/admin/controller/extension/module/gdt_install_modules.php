@@ -179,10 +179,109 @@ class ControllerExtensionModuleGdtInstallModules extends Controller {
         $data['popular_url'] = $this->url->link('extension/module/gdt_install_modules/popular', 'user_token=' . $this->session->data['user_token'], true);
         $data['newest_url'] = $this->url->link('extension/module/gdt_install_modules/newest', 'user_token=' . $this->session->data['user_token'], true);
         $data['search_url'] = $this->url->link('extension/module/gdt_install_modules/search', 'user_token=' . $this->session->data['user_token'], true);
+        $data['installed_url'] = $this->url->link('extension/module/gdt_install_modules/installed', 'user_token=' . $this->session->data['user_token'], true);
 
         $data['user_token'] = $this->session->data['user_token'];
 
         return $data;
+    }
+
+    /**
+     * Страница установленных модулей (объединённый макет)
+     */
+    public function installed() {
+        $this->load->language('extension/module/gdt_install_modules');
+        $this->load->language('extension/module/gdt_updater');
+
+        $this->document->setTitle($this->language->get('heading_title'));
+
+        $data = $this->getCommonData();
+        $data['current_page'] = 'installed';
+        $data['page_title']   = 'Установленные модули';
+
+        // Для установленных модулей кнопка «Назад» ведёт в marketplace
+        $data['back'] = $this->url->link('marketplace/extension', 'user_token=' . $this->session->data['user_token'] . '&type=module', true);
+
+        // AJAX URL-адреса (делегируем к gdt_updater)
+        $data['settings_url']         = html_entity_decode($this->url->link('extension/module/gdt_updater/settings',         'user_token=' . $this->session->data['user_token'], true));
+        $data['save_settings_url']    = html_entity_decode($this->url->link('extension/module/gdt_updater/saveSettings',    'user_token=' . $this->session->data['user_token'], true));
+        $data['check_updates_url']    = html_entity_decode($this->url->link('extension/module/gdt_updater/check',           'user_token=' . $this->session->data['user_token'], true));
+        $data['toggle_auto_update_url'] = html_entity_decode($this->url->link('extension/module/gdt_updater/toggleAutoUpdate', 'user_token=' . $this->session->data['user_token'], true));
+        $data['delete_multiple_url']  = html_entity_decode($this->url->link('extension/module/gdt_updater/deleteMultiple',  'user_token=' . $this->session->data['user_token'], true));
+        $data['install_module_url']   = html_entity_decode($this->url->link('extension/module/gdt_install_modules/installModule', 'user_token=' . $this->session->data['user_token'], true));
+
+        // Данные установленных модулей с проверкой обновлений
+        try {
+            $data['modules'] = $this->getInstalledModulesData();
+        } catch (\Exception $e) {
+            LoggerService::write('GDT installed() error: ' . $e->getMessage());
+            $data['modules'] = array();
+        }
+
+        $data['header']      = $this->load->controller('common/header');
+        $data['column_left'] = $this->load->controller('common/column_left');
+        $data['footer']      = $this->load->controller('common/footer');
+
+        $this->response->setOutput($this->load->view('extension/module/gdt_install_modules', $data));
+    }
+
+    /**
+     * Получение данных установленных модулей с проверкой обновлений.
+     * Логика аналогична gdt_updater::getModulesData().
+     */
+    private function getInstalledModulesData() {
+        $installed_modules = $this->getServiceFactory()->getModuleService()->getInstalledModules();
+
+        if (empty($installed_modules)) {
+            return array();
+        }
+
+        $modules    = array();
+        $server_url = $this->config->get('module_gdt_updater_server');
+        $api_key    = $this->config->get('module_gdt_updater_api_key') ?: '';
+
+        foreach ($installed_modules as $module) {
+            $module_data = array(
+                'name'         => $module['module_name'] ?? $module['name'],
+                'description'  => $module['description'] ?? ' - ',
+                'code'         => $module['code'],
+                'version'      => $module['version'],
+                'author'       => $module['creator_name'] ?? '',
+                'author_url'   => $module['author_url'] ?? '',
+                'has_update'   => false,
+                'new_version'  => '',
+                'update_url'   => '',
+                'delete_url'   => '',
+                'settings_url' => '',
+                'auto_update'  => false,
+            );
+
+            // Ссылка на настройки модуля
+            if (!empty($module['controller'])) {
+                $module_data['settings_url'] = $this->url->link($module['controller'], 'user_token=' . $this->session->data['user_token'], true);
+            } elseif (!empty($module['code'])) {
+                $module_data['settings_url'] = $this->url->link('extension/module/' . $module['code'], 'user_token=' . $this->session->data['user_token'], true);
+                $module_data['delete_url']   = $this->url->link('extension/module/gdt_updater/delete', 'user_token=' . $this->session->data['user_token'] . '&code=' . $module['code'], true);
+            }
+
+            // Проверка обновлений
+            if (!empty($server_url)) {
+                $update_info = $this->getServiceFactory()->getUpdateService()->checkModuleUpdate($server_url, $module, $api_key);
+                if ($update_info && !isset($update_info['error'])) {
+                    $module_data['has_update']  = true;
+                    $module_data['new_version'] = $update_info['version'];
+                    $module_data['update_url']  = $this->url->link('extension/module/gdt_updater/update', 'user_token=' . $this->session->data['user_token'] . '&code=' . $module['code'], true);
+                }
+            }
+
+            // Настройка автообновления
+            $auto_modules = $this->config->get('module_gdt_updater_auto_modules') ?: array();
+            $module_data['auto_update'] = in_array($module['code'], $auto_modules);
+
+            $modules[] = $module_data;
+        }
+
+        return $modules;
     }
     
     /**
