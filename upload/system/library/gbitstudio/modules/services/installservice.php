@@ -495,34 +495,34 @@ class InstallService {
     }
 
     private function resolveVersion(array $module_data, $extract_dir, $code, $server_module_info = array()) {
-        if (is_array($server_module_info) && !empty($server_module_info['version'])) {
-            return (string)$server_module_info['version'];
-        }
+        $version = '0.0.0';
 
-        $install_xml = $extract_dir . '/install.xml';
-        if (is_file($install_xml)) {
-            $content = file_get_contents($install_xml);
-            if ($content) {
-                $dom = new \DOMDocument('1.0', 'UTF-8');
-                if (@$dom->loadXML($content)) {
-                    $node = $dom->getElementsByTagName('version')->item(0);
-                    if ($node && trim($node->nodeValue) !== '') {
-                        return trim($node->nodeValue);
+        if (is_array($server_module_info) && !empty($server_module_info['version'])) {
+            $version = (string)$server_module_info['version'];
+        } else {
+            $install_xml = $extract_dir . '/install.xml';
+            if (is_file($install_xml)) {
+                $content = file_get_contents($install_xml);
+                if ($content) {
+                    $dom = new \DOMDocument('1.0', 'UTF-8');
+                    if (@$dom->loadXML($content)) {
+                        $node = $dom->getElementsByTagName('version')->item(0);
+                        if ($node && trim($node->nodeValue) !== '') {
+                            $version = trim($node->nodeValue);
+                        }
                     }
+                }
+            } elseif (!empty($module_data['version'])) {
+                $version = (string)$module_data['version'];
+            } else {
+                $query = $this->db->query("SELECT `version` FROM `" . DB_PREFIX . "modification` WHERE `code` = '" . $this->db->escape($code) . "' LIMIT 1");
+                if ($query->num_rows && !empty($query->row['version'])) {
+                    $version = (string)$query->row['version'];
                 }
             }
         }
 
-        if (!empty($module_data['version'])) {
-            return (string)$module_data['version'];
-        }
-
-        $query = $this->db->query("SELECT `version` FROM `" . DB_PREFIX . "modification` WHERE `code` = '" . $this->db->escape($code) . "' LIMIT 1");
-        if ($query->num_rows && !empty($query->row['version'])) {
-            return (string)$query->row['version'];
-        }
-
-        return '0.0.0';
+        return ltrim($version, 'v');
     }
 
     private function getOpenCartPath($relative_path) {

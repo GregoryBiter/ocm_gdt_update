@@ -26,7 +26,7 @@ class UpdateService {
         $url = rtrim($server_url, '/') . '/api/v1/modules/check';
         $post_data = [
             'code' => $module['code'],
-            'version' => $module['version']
+            'version' => ltrim($module['version'], 'v')
         ];
         
         $response_data = $this->executeApiRequest($url, $post_data, 10, $api_key);
