@@ -54,12 +54,16 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $data['delete_multiple_url'] = html_entity_decode($this->url->link('extension/module/gdt_updater/deleteMultiple', 'user_token=' . $this->session->data['user_token'], true), ENT_QUOTES, 'UTF-8');
         $data['cancel'] = $this->url->link('marketplace/extension', 'user_token=' . $this->session->data['user_token'] . '&type=module', true);
 
-        // Ссылки на страницы установки модулей
+        // Ссылки на страницы установки модулей (навигация)
         $data['install_modules_url'] = $this->url->link('extension/module/gdt_install_modules/store', 'user_token=' . $this->session->data['user_token'], true);
         $data['install_featured_url'] = $this->url->link('extension/module/gdt_install_modules/featured', 'user_token=' . $this->session->data['user_token'], true);
         $data['install_popular_url'] = $this->url->link('extension/module/gdt_install_modules/popular', 'user_token=' . $this->session->data['user_token'], true);
         $data['install_newest_url'] = $this->url->link('extension/module/gdt_install_modules/newest', 'user_token=' . $this->session->data['user_token'], true);
         $data['install_search_url'] = $this->url->link('extension/module/gdt_install_modules/search', 'user_token=' . $this->session->data['user_token'], true);
+
+        // AJAX Ссылки для модальных окон
+        $data['get_available_modules_url'] = $this->url->link('extension/module/gdt_install_modules/getStoreModules', 'user_token=' . $this->session->data['user_token'], true);
+        $data['install_module_url'] = $this->url->link('extension/module/gdt_install_modules/installModule', 'user_token=' . $this->session->data['user_token'], true);
 
         $decode = [
             'settings_url',
@@ -70,6 +74,9 @@ class ControllerExtensionModuleGdtUpdater extends Controller
             'install_newest_url',
             'install_search_url',
             'check_updates',
+            'install_modules_url',
+            'get_available_modules_url',
+            'install_module_url',
             'cancel'
         ];
 
@@ -188,6 +195,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $json['module_gdt_updater_server'] = $this->config->get('module_gdt_updater_server');
         $json['module_gdt_updater_api_key'] = $this->config->get('module_gdt_updater_api_key');
         $json['module_gdt_updater_status'] = $this->config->get('module_gdt_updater_status');
+        $json['module_gdt_updater_api_log'] = $this->config->get('module_gdt_updater_api_log');
         $json['module_gdt_updater_auto_modules'] = $this->config->get('module_gdt_updater_auto_modules') ?: array();
 
         $this->response->addHeader('Content-Type: application/json');
@@ -420,7 +428,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
                             // Скачиваем и устанавливаем обновление через встроенный процесс OpenCart
                             $download_result = $this->getServiceFactory()->getUpdateService()->downloadModule($server_url, $module['code'], $update_info['version'], $api_key);
                             if ($download_result['success']) {
-                                $result = $this->getServiceFactory()->getInstallService()->installModule($download_result['file_path'], $module['code']);
+                                $result = $this->getServiceFactory()->getInstallService()->installModule($download_result['file_path'], $module['code'], $update_info);
                             } else {
                                 $result = $download_result['error'] ?? 'Ошибка загрузки модуля';
                             }
@@ -481,6 +489,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $current_settings['module_gdt_updater_server'] = $this->config->get('module_gdt_updater_server') ?: '';
         $current_settings['module_gdt_updater_api_key'] = $this->config->get('module_gdt_updater_api_key') ?: '';
         $current_settings['module_gdt_updater_status'] = $this->config->get('module_gdt_updater_status') ?: 0;
+        $current_settings['module_gdt_updater_api_log'] = $this->config->get('module_gdt_updater_api_log') ?: 0;
         $current_settings['module_gdt_updater_auto_modules'] = $this->config->get('module_gdt_updater_auto_modules') ?: array();
         
         // Объединяем с новыми настройками
@@ -699,17 +708,6 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         // Створюємо нову таблицю
         $this->model_extension_module_gdt_updater->createTables();
         
-        // Виконуємо міграцію даних з opencart-module.json в нову базу
-        $migration_result = $this->model_extension_module_gdt_updater->migrateFromJsonToDatabase();
-        
-        if ($migration_result['migrated'] > 0) {
-            LoggerService::write('GDT Updater: Migrated ' . $migration_result['migrated'] . ' modules from JSON to database');
-        }
-        
-        if (!empty($migration_result['errors'])) {
-            LoggerService::write('GDT Updater: Migration errors: ' . implode('; ', $migration_result['errors']));
-        }
-        
         // Добавляем события
         $this->load->model('setting/event');
         $this->model_setting_event->addEvent('gdt_updater_auto_check', 'admin/controller/common/dashboard/before', 'extension/module/gdt_updater/autoCheckEvent');
@@ -738,7 +736,7 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         // Очищаем массив автообновления
         $this->saveModuleSettings(array('module_gdt_updater_auto_modules' => array()));
 
-        // Видаляємо таблицю модулів
+        // Legacy cleanup
         $this->db->query("DROP TABLE IF EXISTS `" . DB_PREFIX . "gdt_modules` ");
     }
 

@@ -20,98 +20,37 @@ class ModelExtensionModuleGdtUpdater extends Model {
      */
     public function createTables() {
         $this->db->query("
-            CREATE TABLE IF NOT EXISTS `" . DB_PREFIX . "gdt_modules` (
+            CREATE TABLE IF NOT EXISTS `" . DB_PREFIX . "ocm_modules` (
                 `module_id` INT(11) NOT NULL AUTO_INCREMENT,
                 `code` VARCHAR(64) NOT NULL,
                 `name` VARCHAR(255) NOT NULL,
-                `version` VARCHAR(32) NOT NULL,
-                `data` TEXT NOT NULL,
-                `paths` TEXT NOT NULL,
-                `date_added` DATETIME NOT NULL,
+                `type` VARCHAR(32) NOT NULL DEFAULT 'module',
+                `installed_version` VARCHAR(32) NOT NULL DEFAULT '0.0.0',
+                `source` VARCHAR(32) NOT NULL DEFAULT 'gdt_updater',
+                `metadata_json` MEDIUMTEXT NOT NULL,
+                `status` TINYINT(1) NOT NULL DEFAULT 1,
+                `installed_at` DATETIME NOT NULL,
+                `updated_at` DATETIME NOT NULL,
                 PRIMARY KEY (`module_id`),
                 UNIQUE KEY `code` (`code`)
             ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
         ");
+
+        $this->db->query("
+            CREATE TABLE IF NOT EXISTS `" . DB_PREFIX . "ocm_module_files` (
+                `file_id` INT(11) NOT NULL AUTO_INCREMENT,
+                `module_code` VARCHAR(64) NOT NULL,
+                `file_path` VARCHAR(500) NOT NULL,
+                `file_hash` VARCHAR(64) NOT NULL DEFAULT '',
+                `installed_at` DATETIME NOT NULL,
+                `updated_at` DATETIME NOT NULL,
+                `removed_at` DATETIME NULL DEFAULT NULL,
+                PRIMARY KEY (`file_id`),
+                KEY `module_code` (`module_code`)
+            ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
+        ");
     }
 
-    /**
-     * Мігрує дані з JSON файлів в нову таблицю gdt_modules
-     * 
-     * @return array ['migrated' => int, 'errors' => array]
-     */
-    public function migrateFromJsonToDatabase() {
-        $result = ['migrated' => 0, 'errors' => []];
-        
-        try {
-            // Переконуємось що таблиця існує
-            $this->createTables();
-            
-            $modules_dir = constant('DIR_SYSTEM') . 'modules/';
-            
-            if (!is_dir($modules_dir)) {
-                LoggerService::info('system/modules/ directory does not exist, migration not needed', 'Model');
-                return $result;
-            }
-            
-            $dirs = scandir($modules_dir);
-            foreach ($dirs as $dir) {
-                if ($dir === '.' || $dir === '..') {
-                    continue;
-                }
-                
-                $json_file = $modules_dir . $dir . '/opencart-module.json';
-                if (file_exists($json_file)) {
-                    try {
-                        $json_content = file_get_contents($json_file);
-                        $module_data = json_decode($json_content, true);
-                        
-                        if (!$module_data || !isset($module_data['code'])) {
-                            $result['errors'][] = 'Invalid JSON in ' . $json_file;
-                            continue;
-                        }
-                        
-                        $code = $module_data['code'];
-                        $name = $module_data['module_name'] ?? $module_data['name'] ?? $code;
-                        $version = $module_data['version'] ?? '1.0.0';
-                        $paths = $module_data['files'] ?? []; // У старій структурі файли були в 'files'
-                        
-                        // Вставляємо або оновлюємо в базі
-                        $this->db->query("INSERT INTO `" . DB_PREFIX . "gdt_modules` SET 
-                            `code` = '" . $this->db->escape($code) . "',
-                            `name` = '" . $this->db->escape($name) . "',
-                            `version` = '" . $this->db->escape($version) . "',
-                            `data` = '" . $this->db->escape(json_encode($module_data, JSON_UNESCAPED_UNICODE)) . "',
-                            `paths` = '" . $this->db->escape(json_encode($paths, JSON_UNESCAPED_UNICODE)) . "',
-                            `date_added` = NOW()
-                            ON DUPLICATE KEY UPDATE 
-                            `name` = '" . $this->db->escape($name) . "',
-                            `version` = '" . $this->db->escape($version) . "',
-                            `data` = '" . $this->db->escape(json_encode($module_data, JSON_UNESCAPED_UNICODE)) . "',
-                            `paths` = '" . $this->db->escape(json_encode($paths, JSON_UNESCAPED_UNICODE)) . "'");
-                        
-                        $result['migrated']++;
-                        LoggerService::write('GDT Module Manager: Migrated module ' . $code . ' from JSON to database');
-                        
-                        // Видаляємо JSON файл після успішної міграції (за бажанням, але краще залишити як бекап або видалити якщо точно не треба)
-                        // @unlink($json_file);
-                        
-                    } catch (Exception $e) {
-                        $result['errors'][] = 'Error migrating module ' . $dir . ': ' . $e->getMessage();
-                    }
-                }
-            }
-            
-            // Якщо все пройшло успішно, можна видалити стару таблицю без префікса (якщо вона була)
-            $this->db->query("DROP TABLE IF EXISTS `gdt_modules`");
-            
-        } catch (Exception $e) {
-            $result['errors'][] = 'Migration error: ' . $e->getMessage();
-            LoggerService::write('GDT Module Manager: Migration error: ' . $e->getMessage());
-        }
-        
-        return $result;
-    }
-    
     /**
      * Отримує модулі з бази даних
      * 
@@ -121,15 +60,21 @@ class ModelExtensionModuleGdtUpdater extends Model {
         $modules = [];
         
         try {
-            $query = "SELECT * FROM `" . DB_PREFIX . "gdt_modules` ORDER BY `date_added` DESC";
+            $query = "SELECT * FROM `" . DB_PREFIX . "ocm_modules` ORDER BY `updated_at` DESC";
             $result = $this->db->query($query);
             
             if ($result->num_rows > 0) {
                 foreach ($result->rows as $row) {
-                    $module_data = json_decode($row['data'], true);
+                    $module_data = json_decode($row['metadata_json'], true);
                     if ($module_data) {
                         $module_data['code'] = $row['code'];
-                        $module_data['paths'] = json_decode($row['paths'], true);
+                        $module_data['version'] = $row['installed_version'];
+                        $module_data['name'] = $row['name'];
+                        $module_data['paths'] = [];
+                        $paths_query = $this->db->query("SELECT `file_path` FROM `" . DB_PREFIX . "ocm_module_files` WHERE `module_code` = '" . $this->db->escape($row['code']) . "' AND `removed_at` IS NULL");
+                        foreach ($paths_query->rows as $path_row) {
+                            $module_data['paths'][] = $path_row['file_path'];
+                        }
                         $modules[] = $module_data;
                     }
                 }
@@ -149,15 +94,21 @@ class ModelExtensionModuleGdtUpdater extends Model {
      */
     public function getModuleFromDatabase($code) {
         try {
-            $query = "SELECT * FROM `" . DB_PREFIX . "gdt_modules` WHERE `code` = '" . $this->db->escape($code) . "' LIMIT 1";
+            $query = "SELECT * FROM `" . DB_PREFIX . "ocm_modules` WHERE `code` = '" . $this->db->escape($code) . "' LIMIT 1";
             $result = $this->db->query($query);
             
             if ($result->num_rows > 0) {
                 $row = $result->row;
-                $module_data = json_decode($row['data'], true);
+                $module_data = json_decode($row['metadata_json'], true);
                 if ($module_data) {
                     $module_data['code'] = $row['code'];
-                    $module_data['paths'] = json_decode($row['paths'], true);
+                    $module_data['version'] = $row['installed_version'];
+                    $module_data['name'] = $row['name'];
+                    $module_data['paths'] = [];
+                    $paths_query = $this->db->query("SELECT `file_path` FROM `" . DB_PREFIX . "ocm_module_files` WHERE `module_code` = '" . $this->db->escape($row['code']) . "' AND `removed_at` IS NULL");
+                    foreach ($paths_query->rows as $path_row) {
+                        $module_data['paths'][] = $path_row['file_path'];
+                    }
                     return $module_data;
                 }
             }

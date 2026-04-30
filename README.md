@@ -120,7 +120,6 @@ system/
 │           └── tools.php
 └── modules/
     └── gdt_updater/
-        └── opencart-module.json
 ```
 
 ## 🎯 Планы развития (Roadmap)
