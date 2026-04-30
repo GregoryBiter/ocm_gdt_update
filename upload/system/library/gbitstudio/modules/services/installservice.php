@@ -469,6 +469,25 @@ class InstallService {
         }
     }
 
+    /**
+     * Масове видалення модулів
+     *
+     * @param array $codes
+     * @return array
+     */
+    public function deleteMultipleModules(array $codes) {
+        $results = ['success' => [], 'errors' => []];
+        foreach ($codes as $code) {
+            $result = $this->uninstallModule($code);
+            if ($result === true) {
+                $results['success'][] = $code;
+            } else {
+                $results['errors'][] = "Failed to delete $code: " . (is_string($result) ? $result : 'Unknown error');
+            }
+        }
+        return $results;
+    }
+
     private function getDestinationPath($path) {
         $full_path = '';
 

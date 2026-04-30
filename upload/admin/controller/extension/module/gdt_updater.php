@@ -1,6 +1,8 @@
 <?php
+require_once DIR_SYSTEM . 'library/gbitstudio/modules/controllers/GDTBaseController.php';
 
 use Gbitstudio\Modules\Services\LoggerService;
+use Gbitstudio\Modules\Controllers\GDTBaseController;
 
 /**
  * @property Cart\Session $session
@@ -20,7 +22,7 @@ use Gbitstudio\Modules\Services\LoggerService;
  * @property ModelExtensionModuleGdtUpdater $model_extension_module_gdt_updater
  * @property ModelSettingExtension $model_setting_extension
  */
-class ControllerExtensionModuleGdtUpdater extends Controller
+class ControllerExtensionModuleGdtUpdater extends GDTBaseController
 {
     /** @var array */
     private $error = array();
@@ -50,16 +52,15 @@ class ControllerExtensionModuleGdtUpdater extends Controller
     {
         $this->load->language('extension/module/gdt_updater');
 
-        $json = array();
+        $json = array(
+            'module_gdt_updater_server' => $this->config->get('module_gdt_updater_server'),
+            'module_gdt_updater_api_key' => $this->config->get('module_gdt_updater_api_key'),
+            'module_gdt_updater_status' => $this->config->get('module_gdt_updater_status'),
+            'module_gdt_updater_api_log' => $this->config->get('module_gdt_updater_api_log'),
+            'module_gdt_updater_auto_modules' => $this->config->get('module_gdt_updater_auto_modules') ?: array()
+        );
 
-        $json['module_gdt_updater_server'] = $this->config->get('module_gdt_updater_server');
-        $json['module_gdt_updater_api_key'] = $this->config->get('module_gdt_updater_api_key');
-        $json['module_gdt_updater_status'] = $this->config->get('module_gdt_updater_status');
-        $json['module_gdt_updater_api_log'] = $this->config->get('module_gdt_updater_api_log');
-        $json['module_gdt_updater_auto_modules'] = $this->config->get('module_gdt_updater_auto_modules') ?: array();
-
-        $this->response->addHeader('Content-Type: application/json');
-        $this->response->setOutput(json_encode($json));
+        $this->jsonResponse($json);
     }
 
     /**
@@ -70,17 +71,19 @@ class ControllerExtensionModuleGdtUpdater extends Controller
         $this->load->language('extension/module/gdt_updater');
         $this->load->model('setting/setting');
 
-        $json = array();
+        try {
+            $this->validatePermission();
 
-        if (($this->request->server['REQUEST_METHOD'] == 'POST') && $this->validate()) {
-            $this->model_setting_setting->editSetting('module_gdt_updater', $this->request->post);
-            $json['success'] = $this->language->get('text_success');
-        } else {
-            $json['error'] = isset($this->error['warning']) ? $this->error['warning'] : $this->language->get('error_permission');
+            if (($this->request->server['REQUEST_METHOD'] == 'POST') && $this->validate()) {
+                $this->model_setting_setting->editSetting('module_gdt_updater', $this->request->post);
+                $this->jsonResponse(['success' => $this->language->get('text_success')]);
+            } else {
+                $error = isset($this->error['warning']) ? $this->error['warning'] : 'Validation failed';
+                $this->jsonResponse(['error' => $error]);
+            }
+        } catch (Exception $e) {
+            $this->handleException($e);
         }
-
-        $this->response->addHeader('Content-Type: application/json');
-        $this->response->setOutput(json_encode($json));
     }
 
     /**
@@ -447,46 +450,35 @@ class ControllerExtensionModuleGdtUpdater extends Controller
     {
         $this->load->language('extension/module/gdt_updater');
 
-        $json = array();
+        try {
+            $this->validatePermission();
 
-        if (!$this->user->hasPermission('modify', 'extension/module/gdt_updater')) {
-            $json['error'] = $this->language->get('error_permission');
-        } elseif (isset($this->request->get['code'])) {
-            $code = $this->request->get['code'];
-
-            try {
-                // Проверяем, что модуль существует
-                $module = $this->getServiceFactory()->getModuleService()->getModuleByCode($code);
-                if (!$module) {
-                    $json['error'] = sprintf($this->language->get('error_module_not_found_code'), $code);
-                } else {
-                    // Логируем начало процесса удаления
-                    LoggerService::write('GDT Updater: Starting deletion for module ' . $code);
-
-                    // Удаляем модуль
-                    $result = $this->getServiceFactory()->getInstallService()->uninstallModule($code);
-
-                    if ($result === true) {
-                        // Очищаем все кэши OpenCart
-                        $this->cache->delete('*');
-
-                        $json['success'] = sprintf($this->language->get('text_delete_success'), $module['module_name'] ?? $module['name'] ?? $code);
-
-                        LoggerService::write('GDT Updater: Successfully deleted module ' . $code);
-                    } else {
-                        $json['error'] = is_string($result) ? $result : $this->language->get('error_delete_failed');
-                    }
-                }
-            } catch (Exception $e) {
-                $json['error'] = sprintf($this->language->get('error_delete_failed_msg'), $e->getMessage());
-                LoggerService::write('GDT Updater error: ' . $e->getMessage());
+            $code = isset($this->request->get['code']) ? $this->request->get['code'] : '';
+            if (empty($code)) {
+                $this->jsonResponse(['error' => $this->language->get('error_code')]);
+                return;
             }
-        } else {
-            $json['error'] = $this->language->get('error_code');
-        }
 
-        $this->response->addHeader('Content-Type: application/json');
-        $this->response->setOutput(json_encode($json));
+            $module = $this->getServiceFactory()->getModuleService()->getModuleByCode($code);
+            if (!$module) {
+                $this->jsonResponse(['error' => sprintf($this->language->get('error_module_not_found_code'), $code)]);
+                return;
+            }
+
+            $result = $this->getServiceFactory()->getInstallService()->uninstallModule($code);
+
+            if ($result === true) {
+                $this->cache->delete('*');
+                $name = $module['module_name'] ?? $module['name'] ?? $code;
+                $this->jsonResponse(['success' => sprintf($this->language->get('text_delete_success'), $name)]);
+            } else {
+                $error = is_string($result) ? $result : $this->language->get('error_delete_failed');
+                $this->jsonResponse(['error' => $error]);
+            }
+        } catch (Exception $e) {
+            LoggerService::write('GDT Updater error: ' . $e->getMessage());
+            $this->handleException($e);
+        }
     }
 
     /**
@@ -496,60 +488,36 @@ class ControllerExtensionModuleGdtUpdater extends Controller
     {
         $this->load->language('extension/module/gdt_updater');
 
-        $json = array();
+        try {
+            $this->validatePermission();
 
-        if (!$this->user->hasPermission('modify', 'extension/module/gdt_updater')) {
-            $json['error'] = $this->language->get('error_permission');
-        } elseif (($this->request->server['REQUEST_METHOD'] == 'POST') && isset($this->request->post['modules']) && is_array($this->request->post['modules'])) {
-            $modules = $this->request->post['modules'];
-            $deleted = array();
-            $errors = array();
-
-            foreach ($modules as $code) {
-                try {
-                    // Проверяем, что модуль существует
-                    $module = $this->getServiceFactory()->getModuleService()->getModuleByCode($code);
-                    if (!$module) {
-                        $errors[] = sprintf($this->language->get('error_module_not_found_code'), $code);
-                        continue;
-                    }
-
-                    // Логируем начало процесса удаления
-                    LoggerService::write('GDT Updater: Starting deletion for module ' . $code);
-
-                    // Удаляем модуль
-                    $result = $this->getServiceFactory()->getInstallService()->uninstallModule($code);
-
-                    if ($result === true) {
-                        $deleted[] = $module['module_name'] ?? $module['name'] ?? $code;
-                        LoggerService::write('GDT Updater: Successfully deleted module ' . $code);
-                    } else {
-                        $errors[] = $code . ': ' . (is_string($result) ? $result : $this->language->get('error_unknown'));
-                    }
-                } catch (Exception $e) {
-                    $errors[] = $code . ': ' . $e->getMessage();
-                    LoggerService::write('GDT Updater error: ' . $e->getMessage());
-                }
+            if ($this->request->server['REQUEST_METHOD'] !== 'POST') {
+                $this->jsonResponse(['error' => 'Invalid request method']);
+                return;
             }
 
-            // Очищаем все кэши OpenCart после всех операций
-            if (!empty($deleted)) {
+            $modules = $this->getPostData('modules');
+            if (!$modules || !is_array($modules)) {
+                $this->jsonResponse(['error' => 'Не указаны модули для удаления']);
+                return;
+            }
+
+            $result = $this->getServiceFactory()->getInstallService()->deleteMultipleModules($modules);
+
+            if (!empty($result['success'])) {
                 $this->cache->delete('*');
             }
 
-            if (!empty($deleted) && empty($errors)) {
-                $json['success'] = sprintf($this->language->get('text_delete_multiple_success'), count($deleted), implode(', ', $deleted));
-            } elseif (!empty($deleted) && !empty($errors)) {
-                $json['warning'] = sprintf($this->language->get('text_delete_partial_success'), count($deleted), implode(', ', $deleted), implode('; ', $errors));
+            if (!empty($result['success']) && empty($result['errors'])) {
+                $this->jsonResponse(['success' => sprintf($this->language->get('text_delete_multiple_success'), count($result['success']), implode(', ', $result['success']))]);
+            } elseif (!empty($result['success']) && !empty($result['errors'])) {
+                $this->jsonResponse(['warning' => sprintf($this->language->get('text_delete_partial_success'), count($result['success']), implode(', ', $result['success']), implode('; ', $result['errors']))]);
             } else {
-                $json['error'] = sprintf($this->language->get('error_delete_multiple'), implode('; ', $errors));
+                $this->jsonResponse(['error' => sprintf($this->language->get('error_delete_multiple'), implode('; ', $result['errors']))]);
             }
-        } else {
-            $json['error'] = 'Не указаны модули для удаления';
+        } catch (Exception $e) {
+            $this->handleException($e);
         }
-
-        $this->response->addHeader('Content-Type: application/json');
-        $this->response->setOutput(json_encode($json));
     }
 
 
