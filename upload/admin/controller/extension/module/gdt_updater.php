@@ -606,28 +606,28 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
 
         $children[] = array(
             'name' => $this->language->get('gdt_install_modules')->get('heading_title'),
-            'href' => $this->url->link('extension/module/gdt_install_modules', 'user_token=' . $this->session->data['user_token'], true),
-            'children' => array()
-        );
-
-        $children[] = array(
-            'name' => $this->language->get('gdt_updater')->get('text_update'),
             'href' => $this->url->link('extension/module/gdt_updater', 'user_token=' . $this->session->data['user_token'], true),
             'children' => array()
         );
 
+        // $children[] = array(
+        //     'name' => $this->language->get('gdt_updater')->get('text_update'),
+        //     'href' => $this->url->link('extension/module/gdt_updater', 'user_token=' . $this->session->data['user_token'], true),
+        //     'children' => array()
+        // );
+
         $data['menus'][] = array(
             'id' => 'menu-gdt-updater',
             'name' => $this->language->get('gdt_updater')->get('heading_title'),
-            'href' => '',
+            'href' => $this->url->link('extension/module/gdt_updater', 'user_token=' . $this->session->data['user_token'], true),
             'icon' => 'fa fa-refresh',
-            'children' => $children,
+            'children' => []
         );
 
 
         foreach ($data['menus'] as &$menu) {
             if ($menu['id'] == 'menu-extension') {
-                $menu['children'] = array_merge($menu['children'], $children);
+                $menu['children'] = array_merge($children, $menu['children']);
                 break;
             }
         }
