@@ -144,7 +144,9 @@ class ModuleCatalogService {
                 $module['installed_version'] = $installed_map[$module['code']]['version'];
                 
                 if (isset($module['version'])) {
-                    $module['update_available'] = version_compare($module['version'], $installed_map[$module['code']]['version'], '>');
+                    $server_version = ltrim($module['version'], 'v');
+                    $installed_version = ltrim($installed_map[$module['code']]['version'], 'v');
+                    $module['update_available'] = version_compare($server_version, $installed_version, '>');
                 } else {
                     $module['update_available'] = false;
                 }

@@ -102,6 +102,17 @@ class ControllerExtensionDashboardGdtUpdater extends Controller {
         // Отримуємо дані через сервіс
         $data = $dashboardService->getDashboardData();
         
+        // Перекладаємо повідомлення
+        if (!empty($data['error_message'])) {
+            $args = isset($data['error_args']) ? $data['error_args'] : [];
+            $data['error_message'] = vsprintf($this->language->get($data['error_message']), $args);
+        }
+        
+        if (!empty($data['success_message'])) {
+            $args = isset($data['success_args']) ? $data['success_args'] : [];
+            $data['success_message'] = vsprintf($this->language->get($data['success_message']), $args);
+        }
+
         // Додаємо базові дані
         $data['user_token'] = isset($this->session->data['user_token']) ? $this->session->data['user_token'] : '';
         $data['href_check_updates'] = $this->url->link('extension/module/gdt_updater', 'user_token=' . $data['user_token'], true);
@@ -125,6 +136,17 @@ class ControllerExtensionDashboardGdtUpdater extends Controller {
         // Отримуємо дані через сервіс
         $json = $dashboardService->checkUpdatesAjax();
         
+        // Перекладаємо повідомлення
+        if (!empty($json['error'])) {
+            $args = isset($json['error_args']) ? $json['error_args'] : [];
+            $json['error'] = vsprintf($this->language->get($json['error']), $args);
+        }
+        
+        if (!empty($json['success'])) {
+            $args = isset($json['success_args']) ? $json['success_args'] : [];
+            $json['success'] = vsprintf($this->language->get($json['success']), $args);
+        }
+
         $this->response->addHeader('Content-Type: application/json');
         $this->response->setOutput(json_encode($json));
     }

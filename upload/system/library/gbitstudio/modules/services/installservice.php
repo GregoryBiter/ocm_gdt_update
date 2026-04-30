@@ -155,24 +155,10 @@ class InstallService {
         foreach ($files as $file) {
             $destination = str_replace('\\', '/', substr($file, strlen($directory . 'upload/')));
 
-            $path = '';
-
-            if (substr($destination, 0, 5) == 'admin') {
-                $path = DIR_APPLICATION . substr($destination, 6);
-            } elseif (substr($destination, 0, 7) == 'catalog') {
-                $path = DIR_CATALOG . substr($destination, 8);
-            } elseif (substr($destination, 0, 5) == 'image') {
-                $path = DIR_IMAGE . substr($destination, 6);
-            } elseif (substr($destination, 0, 6) == 'system') {
-                $path = DIR_SYSTEM . substr($destination, 7);
-            } else {
-                // Файли в корені - визначаємо корінь через DIR_APPLICATION
-                $root = rtrim(str_replace('admin/', '', rtrim(DIR_APPLICATION, '/')), '/') . '/';
-                $path = $root . $destination;
-            }
+            $path = $this->getDestinationPath($destination);
 
             if (is_dir($file) && !is_dir($path)) {
-                if (mkdir($path, 0777)) {
+                if (mkdir($path, 0777, true)) {
                     $model->addExtensionPath($extension_install_id, $destination);
                     $installed_paths[] = $destination;
                         LoggerService::write('GDT Install Service: Created directory: ' . $destination);
@@ -397,40 +383,165 @@ class InstallService {
         }
     }
     
+    /**
+     * Видаляє модуль
+     * 
+     * @param string $code
+     * @return bool|string
+     */
+    public function uninstallModule($code) {
+        LoggerService::info('Starting uninstallation for ' . $code, 'InstallService');
+
+        try {
+            // 1. Отримуємо дані модуля з БД за кодом
+            $query = $this->db->query("SELECT * FROM `" . DB_PREFIX . "gdt_modules` WHERE `code` = '" . $this->db->escape($code) . "' LIMIT 1");
+            
+            if ($query->num_rows == 0) {
+                throw new \Exception('Module ' . $code . ' not found in GDT database');
+            }
+
+            $module_row = $query->row;
+            $paths = json_decode($module_row['paths'], true);
+
+            // 2. Видаляємо файли
+            if (is_array($paths)) {
+                $files_to_delete = [];
+                $dirs_to_delete = [];
+                
+                foreach ($paths as $path) {
+                    $full_path = $this->getDestinationPath($path);
+                    if ($full_path && file_exists($full_path)) {
+                        if (is_dir($full_path)) {
+                            $dirs_to_delete[] = $full_path;
+                        } else {
+                            $files_to_delete[] = $full_path;
+                        }
+                    }
+                }
+
+                // Спочатку видаляємо файли
+                foreach ($files_to_delete as $file) {
+                    if (is_file($file)) {
+                        @unlink($file);
+                        LoggerService::write('GDT Install Service: Deleted file: ' . $file);
+                    }
+                }
+
+                // Потім видаляємо папки (в зворотному порядку, щоб видалити підпапки першими)
+                // Але ми видаляємо тільки порожні папки
+                rsort($dirs_to_delete);
+                foreach ($dirs_to_delete as $dir) {
+                    if (is_dir($dir)) {
+                        $items = @scandir($dir);
+                        if ($items !== false) {
+                            $items = array_diff($items, array('.', '..'));
+                            if (empty($items)) {
+                                @rmdir($dir);
+                                LoggerService::write('GDT Install Service: Removed empty directory: ' . $dir);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. Видаляємо модифікацію (якщо є)
+            $this->registry->get('load')->model('setting/modification');
+            $modification_info = $this->registry->get('model_setting_modification')->getModificationByCode($code);
+            if ($modification_info) {
+                $this->registry->get('model_setting_modification')->deleteModification($modification_info['modification_id']);
+                LoggerService::write('GDT Install Service: Deleted modification: ' . $code);
+            }
+
+            // 4. Видаляємо інформацію про встановлення з бази OC (якщо встановлено через ZIP)
+            $this->registry->get('load')->model('setting/extension');
+            $this->db->query("DELETE FROM " . DB_PREFIX . "extension_install WHERE filename LIKE '" . $this->db->escape($code) . ".ocmod.zip'");
+
+            // 5. Видаляємо запис з нашої бази
+            $this->db->query("DELETE FROM `" . DB_PREFIX . "gdt_modules` WHERE `code` = '" . $this->db->escape($code) . "'");
+            
+            LoggerService::info('Successfully uninstalled module ' . $code, 'InstallService');
+            
+            return true;
+        } catch (\Exception $e) {
+            $error_msg = 'Uninstallation error for module ' . $code . ': ' . $e->getMessage();
+            LoggerService::error($error_msg, 'InstallService');
+            return $error_msg;
+        }
+    }
+
+    /**
+     * Масове видалення модулів
+     *
+     * @param array $codes
+     * @return array
+     */
+    public function deleteMultipleModules(array $codes) {
+        $results = ['success' => [], 'errors' => []];
+        foreach ($codes as $code) {
+            $result = $this->uninstallModule($code);
+            if ($result === true) {
+                $results['success'][] = $code;
+            } else {
+                $results['errors'][] = "Failed to delete $code: " . (is_string($result) ? $result : 'Unknown error');
+            }
+        }
+        return $results;
+    }
+
+    private function getDestinationPath($path) {
+        $full_path = '';
+
+        if (substr($path, 0, 5) == 'admin') {
+            $full_path = DIR_APPLICATION . substr($path, 6);
+        } elseif (substr($path, 0, 7) == 'catalog') {
+            $full_path = DIR_CATALOG . substr($path, 8);
+        } elseif (substr($path, 0, 5) == 'image') {
+            $full_path = DIR_IMAGE . substr($path, 6);
+        } elseif (substr($path, 0, 6) == 'system') {
+            $full_path = DIR_SYSTEM . substr($path, 7);
+        } else {
+            // Файли в корені - визначаємо корінь через DIR_APPLICATION
+            $root = rtrim(str_replace('admin/', '', rtrim(DIR_APPLICATION, '/')), '/') . '/';
+            $full_path = $root . $path;
+        }
+        
+        return $full_path;
+    }
+
     private function getXmlValue($dom, $tagName, $default = '') {
         $node = $dom->getElementsByTagName($tagName)->item(0);
         return $node ? $node->nodeValue : $default;
     }
 
     private function resolveVersion(array $module_data, $extract_dir, $code, $server_module_info = array()) {
-        if (is_array($server_module_info) && !empty($server_module_info['version'])) {
-            return (string)$server_module_info['version'];
-        }
+        $version = '0.0.0';
 
-        $install_xml = $extract_dir . '/install.xml';
-        if (is_file($install_xml)) {
-            $content = file_get_contents($install_xml);
-            if ($content) {
-                $dom = new \DOMDocument('1.0', 'UTF-8');
-                if (@$dom->loadXML($content)) {
-                    $node = $dom->getElementsByTagName('version')->item(0);
-                    if ($node && trim($node->nodeValue) !== '') {
-                        return trim($node->nodeValue);
+        if (is_array($server_module_info) && !empty($server_module_info['version'])) {
+            $version = (string)$server_module_info['version'];
+        } else {
+            $install_xml = $extract_dir . '/install.xml';
+            if (is_file($install_xml)) {
+                $content = file_get_contents($install_xml);
+                if ($content) {
+                    $dom = new \DOMDocument('1.0', 'UTF-8');
+                    if (@$dom->loadXML($content)) {
+                        $node = $dom->getElementsByTagName('version')->item(0);
+                        if ($node && trim($node->nodeValue) !== '') {
+                            $version = trim($node->nodeValue);
+                        }
                     }
+                }
+            } elseif (!empty($module_data['version'])) {
+                $version = (string)$module_data['version'];
+            } else {
+                $query = $this->db->query("SELECT `version` FROM `" . DB_PREFIX . "modification` WHERE `code` = '" . $this->db->escape($code) . "' LIMIT 1");
+                if ($query->num_rows && !empty($query->row['version'])) {
+                    $version = (string)$query->row['version'];
                 }
             }
         }
 
-        if (!empty($module_data['version'])) {
-            return (string)$module_data['version'];
-        }
-
-        $query = $this->db->query("SELECT `version` FROM `" . DB_PREFIX . "modification` WHERE `code` = '" . $this->db->escape($code) . "' LIMIT 1");
-        if ($query->num_rows && !empty($query->row['version'])) {
-            return (string)$query->row['version'];
-        }
-
-        return '0.0.0';
+        return ltrim($version, 'v');
     }
 
     private function getOpenCartPath($relative_path) {

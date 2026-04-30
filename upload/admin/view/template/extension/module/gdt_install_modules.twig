@@ -1,12 +1,27 @@
 {{ header }}{{ column_left }}
-<div id="content">
+<div id="content" x-data="gdtInstallModules()">
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js" defer></script>
   <div class="page-header">
     <div class="container-fluid">
       <div class="pull-right">
-        <button type="button" id="button-refresh" data-loading-text="Загрузка..." class="btn btn-info"><i class="fa fa-refresh"></i> Обновить список</button>
+        {% if current_page == 'installed' %}
+        <button type="button" @click="confirmDeleteMultiple()" class="btn btn-danger" :disabled="selectedModules.length === 0">
+          <i class="fa fa-trash"></i> Удалить выбранные <span x-show="selectedModules.length > 0" x-text="'(' + selectedModules.length + ')'"></span>
+        </button>
+        <button type="button" @click="showSettings()" class="btn btn-default"><i class="fa fa-cog"></i> Настройки</button>
+        <button type="button" @click="checkUpdates()" class="btn btn-primary" :disabled="isCheckingUpdates">
+          <i class="fa" :class="isCheckingUpdates ? 'fa-spinner fa-spin' : 'fa-refresh'"></i> 
+          <span x-text="isCheckingUpdates ? 'Проверка...' : 'Проверить обновления'"></span>
+        </button>
+        {% else %}
+        <button type="button" @click="refreshList()" class="btn btn-default" :disabled="isLoading">
+          <i class="fa" :class="isLoading ? 'fa-spinner fa-spin' : 'fa-refresh'"></i> 
+          <span x-text="isLoading ? 'Загрузка...' : 'Обновить список'"></span>
+        </button>
+        {% endif %}
         <a href="{{ back }}" data-toggle="tooltip" title="Назад" class="btn btn-default"><i class="fa fa-reply"></i></a>
       </div>
-      <h1>{{ page_title|default('Установка модулей') }}</h1>
+      <h1>{{ page_title|default('Модули') }}</h1>
       <ul class="breadcrumb">
         {% for breadcrumb in breadcrumbs %}
         <li><a href="{{ breadcrumb.href }}">{{ breadcrumb.text }}</a></li>
@@ -17,115 +32,329 @@
   <div class="container-fluid">
     <!-- Сообщения -->
     <div id="alert-container"></div>
-    
-    <!-- Навигация между страницами -->
-    <div class="panel panel-default">
-      <div class="panel-body">
-        <div class="btn-group" role="group">
-          <a href="{{ store_url }}" class="btn btn-default {% if current_page == 'store' %}active{% endif %}">
-            <i class="fa fa-shopping-cart"></i> Магазин модулей
-          </a>
-          <a href="{{ featured_url }}" class="btn btn-default {% if current_page == 'featured' %}active{% endif %}">
-            <i class="fa fa-star"></i> Рекомендуемые
-          </a>
-          <a href="{{ popular_url }}" class="btn btn-default {% if current_page == 'popular' %}active{% endif %}">
-            <i class="fa fa-trophy"></i> Популярные
-          </a>
-          <a href="{{ newest_url }}" class="btn btn-default {% if current_page == 'newest' %}active{% endif %}">
-            <i class="fa fa-clock-o"></i> Новые
-          </a>
-          <a href="{{ search_url }}" class="btn btn-default {% if current_page == 'search' %}active{% endif %}">
-            <i class="fa fa-search"></i> Поиск
-          </a>
+
+    {% if current_page == 'installed' %}
+    <!-- Модальное окно настроек -->
+    <div class="modal fade" id="modal-settings" tabindex="-1" role="dialog">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span></button>
+            <h4 class="modal-title">Настройки модуля</h4>
+          </div>
+          <div class="modal-body">
+            <form @submit.prevent="saveSettings()">
+              <div class="form-group">
+                <label>URL сервера обновлений</label>
+                <input type="text" x-model="settings.server" class="form-control" />
+              </div>
+              <div class="form-group">
+                <label>API-ключ</label>
+                <input type="text" x-model="settings.api_key" class="form-control" />
+              </div>
+              <div class="form-group">
+                <label>Статус</label>
+                <select x-model="settings.status" class="form-control">
+                  <option value="1">Включён</option>
+                  <option value="0">Отключён</option>
+                </select>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Отмена</button>
+            <button type="button" class="btn btn-primary" @click="saveSettings()" :disabled="isSavingSettings">
+              <i class="fa" :class="isSavingSettings ? 'fa-spinner fa-spin' : ''"></i> Сохранить
+            </button>
+          </div>
         </div>
+      </div>
+    </div>
+    <!-- Модальное окно подтверждения удаления -->
+    <div class="modal fade" id="modal-delete-confirm" tabindex="-1" role="dialog">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span></button>
+            <h4 class="modal-title"><i class="fa fa-warning text-danger"></i> Подтверждение удаления</h4>
+          </div>
+          <div class="modal-body">
+            <div class="alert alert-warning"><i class="fa fa-exclamation-triangle"></i> <strong>Внимание!</strong> Удаление модуля необратимо.</div>
+            <p x-text="deleteModal.message"></p>
+            <div x-show="deleteModal.isMultiple">
+              <strong>Модули для удаления:</strong>
+              <ul>
+                <template x-for="m in deleteModal.modules" :key="m.code">
+                  <li x-text="m.name + ' (' + m.code + ')'"></li>
+                </template>
+              </ul>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Отмена</button>
+            <button type="button" class="btn btn-danger" @click="confirmDelete()" :disabled="isDeleting">
+              <i class="fa" :class="isDeleting ? 'fa-spinner fa-spin' : 'fa-trash'"></i> Удалить
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Навигация между страницами -->
+    <div class="panel panel-default" style="margin-bottom:15px;">
+      <div class="panel-body" style="padding:0 15px;">
+        <ul class="nav nav-tabs gdt-nav-tabs">
+          <li class="{% if current_page == 'installed' %}active{% endif %}">
+            <a href="{{ installed_url }}"><i class="fa fa-plug"></i> Установленные</a>
+          </li>
+          <li class="{% if current_page == 'store' %}active{% endif %}">
+            <a href="{{ store_url }}"><i class="fa fa-shopping-cart"></i> Магазин</a>
+          </li>
+          <li class="{% if current_page == 'featured' %}active{% endif %}">
+            <a href="{{ featured_url }}"><i class="fa fa-star"></i> Рекомендуемые</a>
+          </li>
+          <li class="{% if current_page == 'popular' %}active{% endif %}">
+            <a href="{{ popular_url }}"><i class="fa fa-trophy"></i> Популярные</a>
+          </li>
+          <li class="{% if current_page == 'newest' %}active{% endif %}">
+            <a href="{{ newest_url }}"><i class="fa fa-clock-o"></i> Новые</a>
+          </li>
+          <li class="{% if current_page == 'search' %}active{% endif %}">
+            <a href="{{ search_url }}"><i class="fa fa-search"></i> Поиск</a>
+          </li>
+        </ul>
       </div>
     </div>
 
     <!-- Контент страницы -->
-    <div class="panel panel-default">
-      <div class="panel-heading">
+    <div class="panel panel-default pw-panel">
+      <div class="panel-heading pw-panel-heading">
         <h3 class="panel-title">
-          {% if current_page == 'store' %}
+          {% if current_page == 'installed' %}
+            <i class="fa fa-plug"></i> {{ page_title|default('Установленные модули') }}
+          {% elseif current_page == 'store' %}
             <i class="fa fa-shopping-cart"></i> {{ page_title|default('Магазин модулей') }}
           {% elseif current_page == 'featured' %}
-            <i class="fa fa-star"></i> {{ page_title|default('Рекомендуемые модули') }}
+            <i class="fa fa-star"></i> {{ page_title|default('Рекомендуемые') }}
           {% elseif current_page == 'popular' %}
-            <i class="fa fa-trophy"></i> {{ page_title|default('Популярные модули') }}
+            <i class="fa fa-trophy"></i> {{ page_title|default('Популярные') }}
           {% elseif current_page == 'newest' %}
-            <i class="fa fa-clock-o"></i> {{ page_title|default('Новые модули') }}
+            <i class="fa fa-clock-o"></i> {{ page_title|default('Новые') }}
           {% elseif current_page == 'search' %}
-            <i class="fa fa-search"></i> {{ page_title|default('Поиск модулей') }}
+            <i class="fa fa-search"></i> {{ page_title|default('Поиск') }}
           {% else %}
             <i class="fa fa-puzzle-piece"></i> {{ page_title|default('Установка модулей') }}
           {% endif %}
         </h3>
+        {% if current_page == 'installed' %}
+        <div class="pw-search">
+          <input type="text" class="form-control" id="pw-filter-modules" placeholder="Поиск...">
+        </div>
+        {% endif %}
       </div>
       <div class="panel-body">
-        {% if page_description %}
-        <p class="text-muted">{{ page_description }}</p>
-        {% endif %}
-        
-        {% if current_page == 'search' or current_page == 'store' %}
-        <!-- Форма поиска -->
-        <div class="search-form">
-          <div class="row">
-            <div class="col-md-8">
-              <input type="text" id="search-input" class="form-control" placeholder="Введите название модуля или ключевые слова...">
+        {% if current_page == 'installed' %}
+          {% if modules is empty %}
+            <div class="pw-no-modules">
+              <i class="fa fa-inbox"></i>
+              <h3>Нет установленных модулей</h3>
+              <p>Перейдите в каталог, чтобы найти и установить новые модули.</p>
+              <a href="{{ store_url }}" class="btn btn-primary" style="margin-top:15px;">Посмотреть каталог</a>
             </div>
-            <div class="col-md-4">
-              <button type="button" id="search-button" class="btn btn-primary btn-block">
-                <i class="fa fa-search"></i> {{ current_page == 'store' ? 'Поиск в магазине' : 'Найти модули' }}
-              </button>
-            </div>
-          </div>
-          <div class="row" style="margin-top: 15px;">
-            <div class="col-md-4">
-              <select id="search-category" class="form-control">
-                <option value="">Все категории</option>
-                <option value="ecommerce">Электронная коммерция</option>
-                <option value="shipping">Доставка</option>
-                <option value="payment">Платежи</option>
-                <option value="seo">SEO</option>
-                <option value="analytics">Аналитика</option>
-                <option value="marketing">Маркетинг</option>
-                <option value="design">Дизайн</option>
-                <option value="tools">Инструменты</option>
-              </select>
-            </div>
-            <div class="col-md-4">
-              <select id="search-sort" class="form-control">
-                <option value="relevance">По релевантности</option>
-                <option value="popularity">По популярности</option>
-                <option value="rating">По рейтингу</option>
-                <option value="date">По дате</option>
-                <option value="name">По названию</option>
-              </select>
-            </div>
-            <div class="col-md-4">
-              <select id="search-price" class="form-control">
-                <option value="">Любая цена</option>
-                <option value="free">Бесплатные</option>
-                <option value="paid">Платные</option>
-              </select>
-            </div>
-          </div>
-        </div>
-        {% endif %}
-        
-        <!-- Контейнер для модулей -->
-        <div id="modules-container">
-          {% if current_page != 'search' %}
-          <div class="text-center loading-content">
-            <i class="fa fa-spinner fa-spin fa-2x"></i>
-            <p>Загрузка {{ page_title|lower }}...</p>
-          </div>
           {% else %}
-          <div class="text-center">
-            <i class="fa fa-search fa-2x"></i>
-            <p>Введите поисковый запрос для поиска модулей</p>
+            <table class="table pw-modules-table">
+              <thead>
+                <tr>
+                  <th class="col-cb"><input type="checkbox" @change="toggleSelectAll()" :checked="allSelected"></th>
+                  <th class="col-name">Модуль</th>
+                  <th class="col-desc">Описание</th>
+                  <th class="col-auto">Автообновление</th>
+                </tr>
+              </thead>
+              <tbody id="modules-tbody">
+                <template x-for="module in filteredModules" :key="module.code">
+                  <tr class="pw-module-row" :class="module.has_update ? 'has-update' : ''">
+                    <td class="col-cb">
+                      <input type="checkbox" :value="module.code" x-model="selectedModules">
+                    </td>
+                    <td class="col-name">
+                      <h3 class="pw-module-title" x-text="module.name"></h3>
+                      <div class="pw-row-actions">
+                        <template x-if="module.settings_url">
+                          <span><a :href="module.settings_url">Настройки</a> | </span>
+                        </template>
+                        <template x-if="module.has_update">
+                          <span><a href="#" @click.prevent="updateModule(module)" style="color:#d63638">Обновить</a> | </span>
+                        </template>
+                        <template x-if="module.delete_url">
+                          <span><a href="#" @click.prevent="confirmDeleteSingle(module)" style="color:#b32d2e">Удалить</a></span>
+                        </template>
+                      </div>
+                    </td>
+                    <td class="col-desc">
+                      <div class="pw-module-description"><p x-text="module.description"></p></div>
+                      <div class="pw-module-meta">
+                        <span x-text="'Версия ' + module.version"></span>
+                        <template x-if="module.author">
+                          <span> | Автор: 
+                            <template x-if="module.author_url">
+                              <a :href="module.author_url" target="_blank" x-text="module.author"></a>
+                            </template>
+                            <template x-if="!module.author_url">
+                              <span x-text="module.author"></span>
+                            </template>
+                          </span>
+                        </template>
+                        <template x-if="module.has_update">
+                          <div class="pw-update-notice">
+                            <strong x-text="'Доступна новая версия: ' + module.new_version"></strong>. 
+                            <a href="#" @click.prevent="updateModule(module)">Обновить сейчас</a>
+                          </div>
+                        </template>
+                      </div>
+                    </td>
+                    <td class="col-auto">
+                      <a href="#" @click.prevent="toggleAutoUpdate(module)" class="auto-update-link">
+                        <span x-show="module.auto_update" style="color:#0071a1"><i class="fa fa-toggle-on"></i> Включено</span>
+                        <span x-show="!module.auto_update" style="color:#2271b1"><i class="fa fa-toggle-off"></i> Включить</span>
+                      </a>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          {% endif %}
+          <div id="update-results"></div>
+        {% else %}
+          {% if page_description %}
+          <p class="text-muted">{{ page_description }}</p>
+          {% endif %}
+
+          {% if current_page == 'search' or current_page == 'store' %}
+          <div class="search-form">
+            <div class="row">
+              <div class="col-md-8">
+                <input type="text" x-model="catalog.query" @keyup.enter="searchModules()" class="form-control" placeholder="Введите название модуля или ключевые слова...">
+              </div>
+              <div class="col-md-4">
+                <button type="button" @click="searchModules()" class="btn btn-primary btn-block" :disabled="isLoading">
+                  <i class="fa" :class="isLoading ? 'fa-spinner fa-spin' : 'fa-search'"></i> {{ current_page == 'store' ? 'Поиск в магазине' : 'Найти модули' }}
+                </button>
+              </div>
+            </div>
+            <div class="row" style="margin-top: 15px;">
+              <div class="col-md-4">
+                <select x-model="catalog.category" class="form-control">
+                  <option value="">Все категории</option>
+                  <option value="ecommerce">Электронная коммерция</option>
+                  <option value="shipping">Доставка</option>
+                  <option value="payment">Платежи</option>
+                  <option value="seo">SEO</option>
+                  <option value="analytics">Аналитика</option>
+                  <option value="marketing">Маркетинг</option>
+                  <option value="design">Дизайн</option>
+                  <option value="tools">Инструменты</option>
+                </select>
+              </div>
+              <div class="col-md-4">
+                <select x-model="catalog.sort" class="form-control">
+                  <option value="relevance">По релевантности</option>
+                  <option value="popularity">По популярности</option>
+                  <option value="rating">По рейтингу</option>
+                  <option value="date">По дате</option>
+                  <option value="name">По названию</option>
+                </select>
+              </div>
+              <div class="col-md-4">
+                <select x-model="catalog.price" class="form-control">
+                  <option value="">Любая цена</option>
+                  <option value="free">Бесплатные</option>
+                  <option value="paid">Платные</option>
+                </select>
+              </div>
+            </div>
           </div>
           {% endif %}
-        </div>
+
+          <div id="modules-container">
+            <template x-if="isLoading">
+              <div class="text-center loading-content">
+                <i class="fa fa-spinner fa-spin fa-2x"></i>
+                <p x-text="'Загрузка ' + pageTitle.toLowerCase() + '...'"></p>
+              </div>
+            </template>
+
+            <template x-if="!isLoading && modules.length === 0">
+              <div class="no-modules text-center">
+                <template x-if="currentPage === 'search' && !catalog.query">
+                  <div>
+                    <i class="fa fa-search fa-2x"></i>
+                    <p>Введите поисковый запрос для поиска модулей</p>
+                  </div>
+                </template>
+                <template x-if="!(currentPage === 'search' && !catalog.query)">
+                  <div>
+                    <i class="fa fa-puzzle-piece fa-2x"></i>
+                    <h3>Модули не найдены</h3>
+                    <p>Нет доступных модулей в данной категории</p>
+                  </div>
+                </template>
+              </div>
+            </template>
+
+            <template x-if="!isLoading && modules.length > 0">
+              <div class="modules-grid">
+                <template x-for="module in modules" :key="module.code">
+                  <div class="module-card" :class="(currentPage === 'featured' || module.featured) ? 'featured' : ''">
+                    <div class="pw-plugin-card-top">
+                      <div class="pw-plugin-card-title">
+                        <h3><span x-text="module.name || 'Неизвестный модуль'"></span> <span style="font-weight: normal; font-size: 12px; color: #8c8f94;" x-text="'v' + (module.version || '1.0')"></span></h3>
+                      </div>
+                      <div class="pw-plugin-card-desc">
+                        <p x-text="module.description || 'Описание отсутствует'"></p>
+                      </div>
+                      <template x-if="module.author">
+                        <p style="font-size: 13px; color: #3c434a;" x-text="'Автор: ' + module.author"></p>
+                      </template>
+                    </div>
+                    <div class="pw-plugin-card-bottom">
+                      <div class="pw-plugin-action">
+                        <template x-if="module.installed">
+                          <div>
+                            <template x-if="module.update_available">
+                              <button @click="install(module)" class="install-btn update-available" style="border-color: #d63638; color: #d63638;" :disabled="module.isInstalling">
+                                <i x-show="module.isInstalling" class="fa fa-spinner fa-spin"></i>
+                                <span x-text="module.isInstalling ? 'Обновление...' : 'Обновить до v' + (module.version || '')"></span>
+                              </button>
+                            </template>
+                            <template x-if="!module.update_available">
+                              <button class="install-btn installed" disabled>Установлен</button>
+                            </template>
+                          </div>
+                        </template>
+                        <template x-if="!module.installed">
+                          <button @click="install(module)" class="install-btn" :disabled="module.isInstalling">
+                            <i x-show="module.isInstalling" class="fa fa-spinner fa-spin"></i>
+                            <span x-text="module.isInstalling ? 'Установка...' : 'Установить'"></span>
+                          </button>
+                        </template>
+                      </div>
+                      <div class="module-meta-info">
+                        <template x-if="module.rating">
+                          <span x-text="'★ ' + module.rating"></span>
+                        </template>
+                        <template x-if="module.downloads">
+                          <span x-text="module.downloads + '+ скачиваний'"></span>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -138,14 +367,45 @@
 .pw-panel-heading .panel-title { font-size: 18px; font-weight: 400; color: #1d2327; }
 
 /* Filter Navigation */
-.nav-tabs { border-bottom: 1px solid #ccd0d4; margin-bottom: 20px; padding-left: 10px; }
-.nav-tabs > li > a { border: none; color: #2271b1; padding: 10px 15px; font-size: 14px; font-weight: 400; background: transparent !important; }
-.nav-tabs > li > a:hover { color: #135e96; }
-.nav-tabs > li.active > a, .nav-tabs > li.active > a:hover, .nav-tabs > li.active > a:focus {
+.gdt-nav-tabs { border-bottom: 1px solid #ccd0d4; margin-bottom: 0; padding-left: 0; }
+.gdt-nav-tabs > li > a { border: none !important; color: #2271b1; padding: 10px 15px; font-size: 14px; font-weight: 400; background: transparent !important; }
+.gdt-nav-tabs > li > a:hover { color: #135e96; background: #f8f9fa !important; }
+.gdt-nav-tabs > li.active > a, .gdt-nav-tabs > li.active > a:hover, .gdt-nav-tabs > li.active > a:focus {
     color: #1d2327;
     font-weight: 600;
-    border-bottom: 3px solid #2271b1;
+    border-bottom: 3px solid #2271b1 !important;
+    background: #fff !important;
 }
+
+/* Installed Modules Table */
+.pw-panel-heading { display: flex; justify-content: space-between; align-items: center; }
+.pw-search { max-width: 250px; }
+.pw-search input { height: 32px; font-size: 13px; border: 1px solid #8c8f94; border-radius: 4px; }
+.pw-modules-table { margin-bottom: 0; }
+.pw-modules-table thead th { border-bottom: 1px solid #ccd0d4 !important; color: #2c3338; font-size: 14px; font-weight: 400; padding: 8px 10px; }
+.pw-modules-table tbody tr { border-top: 1px solid #c3c4c7; }
+.pw-modules-table tbody tr:last-child { border-bottom: 1px solid #c3c4c7; }
+.pw-modules-table tbody tr.has-update { background-color: #fcf0f1; }
+.pw-modules-table tbody td { padding: 15px 10px; vertical-align: top; border-top: none !important; }
+.col-cb { width: 40px; text-align: center; }
+.col-name { width: 22%; }
+.col-desc { width: 58%; }
+.col-auto { width: 15%; }
+.pw-module-title { font-size: 14px; font-weight: 600; margin: 0 0 4px; color: #2271b1; }
+.pw-row-actions { visibility: hidden; font-size: 13px; padding: 2px 0 0; }
+.pw-module-row:hover .pw-row-actions { visibility: visible; }
+.pw-row-actions a { color: #2271b1; text-decoration: none; }
+.pw-row-actions a:hover { text-decoration: underline; }
+.pw-module-description p { margin: 0 0 6px; font-size: 13px; line-height: 1.5; color: #3c434a; }
+.pw-module-meta { font-size: 12px; color: #a7aaad; }
+.pw-module-meta a { color: #3c434a; text-decoration: none; }
+.pw-module-meta a:hover { color: #2271b1; }
+.pw-update-notice { background: #fcf0f1; border-left: 4px solid #d63638; padding: 8px 12px; margin-top: 8px; font-size: 13px; color: #1d2327; }
+.pw-update-notice a { color: #d63638; }
+.pw-no-modules { text-align: center; padding: 60px 20px; }
+.pw-no-modules i { font-size: 48px; color: #c3c4c7; margin-bottom: 15px; display: block; }
+.auto-update-link { display: inline-block; padding: 4px 0; text-decoration: none; font-size: 13px; }
+.auto-update-link:hover { text-decoration: underline; }
 
 /* Modules Grid */
 .modules-grid {
@@ -219,6 +479,8 @@
 }
 .install-btn:hover { background: #f0f0f1; color: #135e96; border-color: #135e96; }
 .install-btn.installed { background: #f6f7f7; color: #2c3338; border-color: #8c8f94; cursor: default; }
+.install-btn.update-available { background: #fff3cd; border-color: #e0a800; color: #856404; }
+.install-btn.update-available:hover { background: #ffe69c; }
 
 .module-meta-info {
     font-size: 12px;
@@ -238,148 +500,176 @@
 
 @media (max-width: 768px) {
     .modules-grid { grid-template-columns: 1fr; }
+    .pw-modules-table thead { display: none; }
+    .pw-modules-table tbody td { display: block; width: 100% !important; border: none !important; padding: 8px 10px; }
+    .pw-row-actions { visibility: visible; }
+    .col-cb, .col-auto { width: auto; }
 }
 </style>
 
 <script type="text/javascript"><!--
-// URL-адреса для AJAX запросов
-var ajaxUrls = {
-    getFeaturedModules: '{{ get_modules_url|default("") }}',
-    getPopularModules: '{{ get_modules_url|default("") }}',
-    getNewestModules: '{{ get_modules_url|default("") }}',
-    getStoreModules: '{{ get_modules_url|default("") }}',
-    searchModules: '{{ search_modules_url|default("") }}',
-    installModule: '{{ install_module_url|default("") }}'
-};
+function gdtInstallModules() {
+    return {
+        currentPage: '{{ current_page|default("") }}',
+        pageTitle: '{{ page_title|default("Модули") }}',
+        userToken: '{{ user_token }}',
+        modules: {% if current_page == 'installed' %}{{ modules|json_encode }}{% else %}[]{% endif %},
+        isLoading: false,
+        isCheckingUpdates: false,
+        isSavingSettings: false,
+        isDeleting: false,
+        filterQuery: '',
+        selectedModules: [],
+        catalog: {
+            query: '',
+            category: '',
+            sort: 'relevance',
+            price: ''
+        },
+        settings: {
+            server: '',
+            api_key: '',
+            status: '1'
+        },
+        deleteModal: {
+            message: '',
+            modules: [],
+            isMultiple: false
+        },
+        ajaxUrls: {
+            getFeatured:   '{{ get_modules_url|default("") }}',
+            getPopular:    '{{ get_modules_url|default("") }}',
+            getNewest:     '{{ get_modules_url|default("") }}',
+            getStore:      '{{ get_modules_url|default("") }}',
+            search:        '{{ search_modules_url|default("") }}',
+            install:       '{{ install_module_url|default("") }}',
+            settings:      '{{ settings_url|default("") }}',
+            saveSettings:  '{{ save_settings_url|default("") }}',
+            checkUpdates:  '{{ check_updates_url|default("") }}',
+            toggleAutoUpdate: '{{ toggle_auto_update_url|default("") }}',
+            deleteMultiple: '{{ delete_multiple_url|default("") }}'
+        },
 
-var currentPage = '{{ current_page|default("") }}';
-var userToken = '{{ user_token }}';
-
-// Функция для отображения уведомлений
-function showAlert(type, message) {
-    var alertClass = 'alert-' + type;
-    var iconClass = type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle';
-    
-    var alert = '<div class="alert ' + alertClass + ' alert-dismissible">';
-    alert += '<i class="fa ' + iconClass + '"></i> ' + message;
-    alert += '<button type="button" class="close" data-dismiss="alert">&times;</button>';
-    alert += '</div>';
-    
-    $('#alert-container').html(alert);
-    
-    // Автоматически скрыть через 5 секунд
-    setTimeout(function() {
-        $('#alert-container .alert').alert('close');
-    }, 5000);
-}
-
-// Загрузка модулей для текущей страницы
-function loadModules() {
-    var url = '';
-    
-    switch(currentPage) {
-        case 'store':
-            url = ajaxUrls.getStoreModules;
-            break;
-        case 'featured':
-            url = ajaxUrls.getFeaturedModules;
-            break;
-        case 'popular':
-            url = ajaxUrls.getPopularModules;
-            break;
-        case 'newest':
-            url = ajaxUrls.getNewestModules;
-            break;
-        default:
-            return;
-    }
-    
-    if (!url) {
-        $('#modules-container').html('<div class="no-modules"><i class="fa fa-exclamation-triangle"></i><h3>Ошибка</h3><p>URL для загрузки модулей не найден</p></div>');
-        return;
-    }
-    
-    $.ajax({
-        url: url,
-        dataType: 'json',
-        success: function(json) {
-            if (json.error) {
-                $('#modules-container').html('<div class="no-modules"><i class="fa fa-exclamation-triangle"></i><h3>Ошибка загрузки</h3><p>' + json.error + '</p></div>');
-            } else if (json.modules) {
-                renderModules(json.modules, currentPage);
-            } else {
-                $('#modules-container').html('<div class="no-modules"><i class="fa fa-puzzle-piece"></i><h3>Модули не найдены</h3><p>Нет доступных модулей в данной категории</p></div>');
+        init() {
+            if (this.currentPage && this.currentPage !== 'search' && this.currentPage !== 'installed') {
+                this.loadModules();
             }
         },
-        error: function(xhr, ajaxOptions, thrownError) {
-            console.log('AJAX Error:', xhr.status, thrownError);
-            $('#modules-container').html('<div class="no-modules"><i class="fa fa-exclamation-triangle"></i><h3>Ошибка подключения</h3><p>Не удалось загрузить список модулей с сервера. Код ошибки: ' + xhr.status + '</p></div>');
-        }
-    });
-}
 
-// Поиск модулей
-function searchModules() {
-    var query = $('#search-input').val();
-    var category = $('#search-category').val();
-    var sort = $('#search-sort').val();
-    var price = $('#search-price').val();
-    
-    if (!query.trim()) {
-        showAlert('warning', 'Введите поисковый запрос');
-        return;
-    }
-    
-    $('#modules-container').html('<div class="text-center loading-content"><i class="fa fa-spinner fa-spin fa-2x"></i><p>Поиск модулей...</p></div>');
-    
-    // Определяем URL для поиска в зависимости от текущей страницы
-    var searchUrl;
-    if (currentPage === 'store') {
-        // Для страницы "Магазин модулей" используем поиск во внешнем API
-        searchUrl = ajaxUrls.searchModules.replace('/searchModules', '/searchStoreModules');
-    } else {
-        // Для других страниц используем обычный поиск
-        searchUrl = ajaxUrls.searchModules;
-    }
-    
-    $.ajax({
-        url: searchUrl,
-        type: 'POST',
-        data: {
-            query: query,
-            category: category,
-            sort: sort,
-            price: price,
-            user_token: userToken
+        get filteredModules() {
+            if (!this.filterQuery) return this.modules;
+            const q = this.filterQuery.toLowerCase();
+            return this.modules.filter(m => 
+                (m.name && m.name.toLowerCase().includes(q)) || 
+                (m.code && m.code.toLowerCase().includes(q)) || 
+                (m.description && m.description.toLowerCase().includes(q))
+            );
         },
-        dataType: 'json',
-        success: function(json) {
-            if (json.error) {
-                $('#modules-container').html('<div class="no-modules"><i class="fa fa-exclamation-triangle"></i><h3>Ошибка поиска</h3><p>' + json.error + '</p></div>');
-            } else if (json.modules) {
-                renderModules(json.modules, 'search');
+
+        get allSelected() {
+            return this.filteredModules.length > 0 && this.selectedModules.length === this.filteredModules.length;
+        },
+
+        toggleSelectAll() {
+            if (this.allSelected) {
+                this.selectedModules = [];
             } else {
-                $('#modules-container').html('<div class="no-modules"><i class="fa fa-puzzle-piece"></i><h3>Модули не найдены</h3><p>По вашему запросу ничего не найдено</p></div>');
+                this.selectedModules = this.filteredModules.map(m => m.code);
             }
         },
-        error: function(xhr, ajaxOptions, thrownError) {
-            $('#modules-container').html('<div class="no-modules"><i class="fa fa-exclamation-triangle"></i><h3>Ошибка поиска</h3><p>Не удалось выполнить поиск модулей</p></div>');
-        }
-    });
-}
 
-// Отображение модулей
-function renderModules(modules, category) {
-    var html = '';
-    
-    if (modules.length === 0) {
-        html = '<div class="no-modules"><i class="fa fa-puzzle-piece"></i><h3>Модули не найдены</h3><p>Нет доступных модулей в данной категории</p></div>';
-    } else {
-        html += '<div class="modules-grid">';
-        
-        modules.forEach(function(module) {
-            var cardClass = 'module-card';
-            var moduleInfo = {
+        showAlert(type, message) {
+            const container = document.getElementById('alert-container');
+            const alertClass = 'alert-' + type;
+            const iconClass = type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle';
+            
+            container.innerHTML = `
+                <div class="alert ${alertClass} alert-dismissible">
+                    <i class="fa ${iconClass}"></i> ${message}
+                    <button type="button" class="close" data-dismiss="alert">&times;</button>
+                </div>
+            `;
+            
+            setTimeout(() => {
+                const alert = container.querySelector('.alert');
+                if (alert) $(alert).alert('close');
+            }, 5000);
+        },
+
+        loadModules() {
+            let url = '';
+            switch(this.currentPage) {
+                case 'store': url = this.ajaxUrls.getStore; break;
+                case 'featured': url = this.ajaxUrls.getFeatured; break;
+                case 'popular': url = this.ajaxUrls.getPopular; break;
+                case 'newest': url = this.ajaxUrls.getNewest; break;
+                default: return;
+            }
+            
+            this.isLoading = true;
+            fetch(url)
+                .then(r => r.json())
+                .then(json => {
+                    this.isLoading = false;
+                    if (json.error) {
+                        this.showAlert('danger', json.error);
+                    } else {
+                        this.modules = (json.modules || []).map(m => ({ ...m, isInstalling: false }));
+                    }
+                })
+                .catch(err => {
+                    this.isLoading = false;
+                    this.showAlert('danger', 'Ошибка загрузки: ' + err);
+                });
+        },
+
+        refreshList() {
+            if (this.currentPage === 'search') {
+                this.searchModules();
+            } else {
+                this.loadModules();
+            }
+        },
+
+        searchModules() {
+            if (!this.catalog.query.trim()) {
+                this.showAlert('warning', 'Введите поисковый запрос');
+                return;
+            }
+
+            this.isLoading = true;
+            const url = this.currentPage === 'store' 
+                ? this.ajaxUrls.search.replace('/searchModules', '/searchStoreModules')
+                : this.ajaxUrls.search;
+
+            const formData = new FormData();
+            formData.append('query', this.catalog.query);
+            formData.append('category', this.catalog.category);
+            formData.append('sort', this.catalog.sort);
+            formData.append('price', this.catalog.price);
+            formData.append('user_token', this.userToken);
+
+            fetch(url, { method: 'POST', body: formData })
+                .then(r => r.json())
+                .then(json => {
+                    this.isLoading = false;
+                    if (json.error) {
+                        this.showAlert('danger', json.error);
+                    } else {
+                        this.modules = (json.modules || []).map(m => ({ ...m, isInstalling: false }));
+                    }
+                })
+                .catch(err => {
+                    this.isLoading = false;
+                    this.showAlert('danger', 'Ошибка поиска: ' + err);
+                });
+        },
+
+        install(module) {
+            module.isInstalling = true;
+            const isUpdate = module.installed && module.update_available;
+            
+            const moduleInfo = {
                 code: module.code || '',
                 name: module.name || '',
                 module_name: module.name || '',
@@ -388,156 +678,188 @@ function renderModules(modules, category) {
                 description: module.description || '',
                 category: module.category || 'module'
             };
-            var moduleInfoPayload = encodeURIComponent(JSON.stringify(moduleInfo));
 
-            if (category === 'featured' || module.featured) {
-                cardClass += ' featured';
+            const formData = new FormData();
+            formData.append('module_code', module.code);
+            formData.append('version', module.version || '');
+            formData.append('server_module_info', JSON.stringify(moduleInfo));
+            formData.append('download_url', module.download_url || '');
+            formData.append('user_token', this.userToken);
+
+            fetch(this.ajaxUrls.install, { method: 'POST', body: formData })
+                .then(r => r.json())
+                .then(json => {
+                    module.isInstalling = false;
+                    if (json.success) {
+                        this.showAlert('success', json.success);
+                        module.installed = true;
+                        module.update_available = false;
+                    } else if (json.error) {
+                        this.showAlert('danger', json.error);
+                    }
+                })
+                .catch(err => {
+                    module.isInstalling = false;
+                    this.showAlert('danger', 'Ошибка установки: ' + err);
+                });
+        },
+
+        showSettings() {
+            fetch(this.ajaxUrls.settings)
+                .then(r => r.json())
+                .then(json => {
+                    this.settings.server = json.module_gdt_updater_server || '';
+                    this.settings.api_key = json.module_gdt_updater_api_key || '';
+                    this.settings.status = json.module_gdt_updater_status || '0';
+                    $('#modal-settings').modal('show');
+                });
+        },
+
+        saveSettings() {
+            this.isSavingSettings = true;
+            const formData = new FormData();
+            formData.append('module_gdt_updater_server', this.settings.server);
+            formData.append('module_gdt_updater_api_key', this.settings.api_key);
+            formData.append('module_gdt_updater_status', this.settings.status);
+            formData.append('user_token', this.userToken);
+
+            fetch(this.ajaxUrls.saveSettings, { method: 'POST', body: formData })
+                .then(r => r.json())
+                .then(json => {
+                    this.isSavingSettings = false;
+                    if (json.success) {
+                        this.showAlert('success', json.success);
+                        $('#modal-settings').modal('hide');
+                        setTimeout(() => location.reload(), 1000);
+                    } else if (json.error) {
+                        this.showAlert('danger', json.error);
+                    }
+                })
+                .catch(err => {
+                    this.isSavingSettings = false;
+                    this.showAlert('danger', 'Ошибка сохранения: ' + err);
+                });
+        },
+
+        checkUpdates() {
+            this.isCheckingUpdates = true;
+            fetch(this.ajaxUrls.checkUpdates)
+                .then(r => r.json())
+                .then(json => {
+                    this.isCheckingUpdates = false;
+                    if (json.error) {
+                        this.showAlert('danger', json.error);
+                    } else if (json.success) {
+                        this.showAlert('success', json.success);
+                        setTimeout(() => location.reload(), 1000);
+                    }
+                })
+                .catch(err => {
+                    this.isCheckingUpdates = false;
+                    this.showAlert('danger', 'Ошибка: ' + err);
+                });
+        },
+
+        updateModule(module) {
+            // This is for the "Update" link in the installed modules table
+            const url = this.urlForUpdate(module);
+            if (!url) {
+                this.showAlert('danger', 'URL для обновления не найден');
+                return;
             }
             
-            html += '<div class="' + cardClass + '">';
+            fetch(url)
+                .then(r => r.json())
+                .then(json => {
+                    if (json.error) {
+                        this.showAlert('danger', json.error);
+                    } else if (json.success) {
+                        this.showAlert('success', json.success);
+                        setTimeout(() => location.reload(), 2000);
+                    }
+                })
+                .catch(err => this.showAlert('danger', 'Ошибка: ' + err));
+        },
+
+        urlForUpdate(module) {
+            // Reconstruct update URL since it depends on the module code
+            return `index.php?route=extension/module/gdt_updater/update&user_token=${this.userToken}&code=${module.code}`;
+        },
+
+        toggleAutoUpdate(module) {
+            const next = module.auto_update ? '0' : '1';
+            const formData = new FormData();
+            formData.append('module_code', module.code);
+            formData.append('auto_update', next);
+            formData.append('user_token', this.userToken);
+
+            fetch(this.ajaxUrls.toggleAutoUpdate, { method: 'POST', body: formData })
+                .then(r => r.json())
+                .then(json => {
+                    if (json.success) {
+                        module.auto_update = (next === '1');
+                        this.showAlert('success', 'Автообновление обновлено');
+                    } else if (json.error) {
+                        this.showAlert('danger', json.error);
+                    }
+                });
+        },
+
+        confirmDeleteSingle(module) {
+            this.deleteModal.isMultiple = false;
+            this.deleteModal.message = `Вы уверены, что хотите удалить модуль "${module.name}"?`;
+            this.deleteModal.modules = [module];
+            $('#modal-delete-confirm').modal('show');
+        },
+
+        confirmDeleteMultiple() {
+            const selected = this.modules.filter(m => this.selectedModules.includes(m.code));
+            this.deleteModal.isMultiple = true;
+            this.deleteModal.message = `Вы уверены, что хотите удалить ${selected.length} модуль(ей)?`;
+            this.deleteModal.modules = selected;
+            $('#modal-delete-confirm').modal('show');
+        },
+
+        confirmDelete() {
+            this.isDeleting = true;
+            $('#modal-delete-confirm').modal('hide');
             
-            html += '<div class="pw-plugin-card-top">';
-            html += '<div class="pw-plugin-card-title">';
-            html += '<h3>' + (module.name || 'Неизвестный модуль') + ' <span style="font-weight: normal; font-size: 12px; color: #8c8f94;">v' + (module.version || '1.0') + '</span></h3>';
-            html += '</div>';
-            html += '<div class="pw-plugin-card-desc">';
-            html += '<p>' + (module.description || 'Описание отсутствует') + '</p>';
-            html += '</div>';
-            if (module.author) {
-                html += '<p style="font-size: 13px; color: #3c434a;">Автор: ' + module.author + '</p>';
-            }
-            html += '</div>';
-            
-            html += '<div class="pw-plugin-card-bottom">';
-            html += '<div class="pw-plugin-action">';
-            
-            if (module.installed) {
-                if (module.update_available) {
-                    html += '<button class="install-btn update-available" data-code="' + (module.code || '') + '" data-url="' + (module.download_url || '') + '" data-version="' + (module.version || '') + '" data-module-info="' + moduleInfoPayload + '" style="border-color: #d63638; color: #d63638;">';
-                    html += 'Обновить до v' + (module.version || '');
-                    html += '</button>';
-                } else {
-                    html += '<button class="install-btn installed" disabled>Установлен</button>';
-                }
+            if (this.deleteModal.isMultiple) {
+                const codes = this.deleteModal.modules.map(m => m.code);
+                const formData = new FormData();
+                codes.forEach(c => formData.append('modules[]', c));
+                formData.append('user_token', this.userToken);
+
+                fetch(this.ajaxUrls.deleteMultiple, { method: 'POST', body: formData })
+                    .then(r => r.json())
+                    .then(json => {
+                        this.isDeleting = false;
+                        if (json.success) {
+                            this.showAlert('success', json.success);
+                            this.modules = this.modules.filter(m => !codes.includes(m.code));
+                            this.selectedModules = [];
+                        } else if (json.error) {
+                            this.showAlert('danger', json.error);
+                        }
+                    });
             } else {
-                html += '<button class="install-btn" data-code="' + (module.code || '') + '" data-url="' + (module.download_url || '') + '" data-version="' + (module.version || '') + '" data-module-info="' + moduleInfoPayload + '">';
-                html += 'Установить';
-                html += '</button>';
+                const module = this.deleteModal.modules[0];
+                const url = `index.php?route=extension/module/gdt_updater/delete&user_token=${this.userToken}&code=${module.code}`;
+                
+                fetch(url)
+                    .then(r => r.json())
+                    .then(json => {
+                        this.isDeleting = false;
+                        if (json.success) {
+                            this.showAlert('success', json.success);
+                            this.modules = this.modules.filter(m => m.code !== module.code);
+                        } else if (json.error) {
+                            this.showAlert('danger', json.error);
+                        }
+                    });
             }
-            html += '</div>';
-
-            html += '<div class="module-meta-info">';
-            if (module.rating) {
-                html += '<span>★ ' + module.rating + '</span>';
-            }
-            if (module.downloads) {
-                html += '<span>' + module.downloads + '+ скачиваний</span>';
-            }
-            html += '</div>';
-            html += '</div>';
-            html += '</div>';
-        });
-        
-        html += '</div>';
+        }
     }
-    
-    $('#modules-container').html(html);
 }
-
-// Установка/обновление модуля
-function installModule(moduleCode, downloadUrl, moduleVersion, serverModuleInfo, buttonElement, isUpdate) {
-    if (!moduleCode || !downloadUrl) {
-        showAlert('danger', 'Недостаточно данных для установки модуля');
-        return;
-    }
-    
-    var originalText = $(buttonElement).html();
-    var actionText = isUpdate ? 'Обновление' : 'Установка';
-    var actionTextLower = isUpdate ? 'обновления' : 'установки';
-    
-    $.ajax({
-        url: ajaxUrls.installModule,
-        type: 'POST',
-        data: {
-            module_code: moduleCode,
-            version: moduleVersion || '',
-            server_module_info: JSON.stringify(serverModuleInfo || {}),
-            download_url: downloadUrl,
-            user_token: userToken
-        },
-        dataType: 'json',
-        beforeSend: function() {
-            $(buttonElement).prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> ' + actionText + '...');
-        },
-        success: function(json) {
-            if (json.success) {
-                showAlert('success', json.success);
-                $(buttonElement).removeClass('update-available').addClass('installed').html('<i class="fa fa-check"></i> Установлен');
-            } else if (json.error) {
-                showAlert('danger', json.error);
-                $(buttonElement).prop('disabled', false).html(originalText);
-            }
-        },
-        error: function(xhr, ajaxOptions, thrownError) {
-            showAlert('danger', 'Ошибка ' + actionTextLower + ' модуля: ' + thrownError);
-            $(buttonElement).prop('disabled', false).html(originalText);
-        }
-    });
-}
-
-// Обработчики событий
-$(document).ready(function() {
-    // Автоматически загружаем модули для текущей страницы (кроме поиска)
-    if (currentPage && currentPage !== 'search') {
-        loadModules();
-    }
-    
-    // Кнопка обновления списка
-    $('#button-refresh').on('click', function() {
-        var button = $(this);
-        button.button('loading');
-        
-        if (currentPage === 'search') {
-            // Для поиска повторяем последний поиск
-            searchModules();
-        } else {
-            loadModules();
-        }
-        
-        setTimeout(function() {
-            button.button('reset');
-        }, 1000);
-    });
-    
-    // Поиск модулей
-    $('#search-button').on('click', function() {
-        searchModules();
-    });
-    
-    $('#search-input').on('keypress', function(e) {
-        if (e.which === 13) {
-            searchModules();
-        }
-    });
-    
-    // Установка/обновление модуля
-    $(document).on('click', '.install-btn:not(.installed)', function(e) {
-        e.preventDefault();
-        var moduleCode = $(this).data('code');
-        var downloadUrl = $(this).data('url');
-        var moduleVersion = $(this).data('version');
-        var moduleInfoPayload = $(this).attr('data-module-info') || '';
-        var serverModuleInfo = {};
-        if (moduleInfoPayload) {
-            try {
-                serverModuleInfo = JSON.parse(decodeURIComponent(moduleInfoPayload));
-            } catch (e) {
-                serverModuleInfo = {};
-            }
-        }
-        var isUpdate = $(this).hasClass('update-available');
-        installModule(moduleCode, downloadUrl, moduleVersion, serverModuleInfo, this, isUpdate);
-    });
-});
 //--></script>
 {{ footer }}

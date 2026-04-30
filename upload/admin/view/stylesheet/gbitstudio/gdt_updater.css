@@ -1,0 +1,511 @@
+/* WordPress-подобные стили для списка модулей */
+.modules-list {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-top: 20px;
+}
+
+.modules-list-header {
+    background: #f8f9fa;
+    border-bottom: 1px solid #ddd;
+    padding: 15px 20px;
+    font-weight: 600;
+    color: #333;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.modules-list-header i {
+    margin-right: 8px;
+    color: #007cba;
+}
+
+.select-all-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.select-all-container label {
+    margin: 0;
+    font-weight: normal;
+    cursor: pointer;
+}
+
+.module-item {
+    border-bottom: 1px solid #eee;
+    padding: 20px;
+    transition: background-color 0.2s ease;
+    position: relative;
+    display: grid;
+    grid-template-columns: 30px 300px 1fr 200px;
+    gap: 20px;
+    align-items: start;
+}
+
+.module-select {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 5px;
+}
+
+.module-checkbox {
+    cursor: pointer;
+}
+
+.module-item:last-child {
+    border-bottom: none;
+}
+
+.module-item:hover {
+    background-color: #f8f9fa;
+}
+
+.module-item.has-update {
+    border-left: 4px solid #dc3545;
+}
+
+.module-item.up-to-date {
+    border-left: 4px solid #28a745;
+}
+
+.module-column-1 {
+    display: flex;
+    flex-direction: column;
+}
+
+.module-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 5px 0;
+    color: #333;
+    display: flex;
+    align-items: center;
+}
+
+.module-title i {
+    margin-right: 8px;
+    color: #007cba;
+    font-size: 16px;
+}
+
+.module-actions-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.action-link {
+    color: #007cba;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 2px 0;
+    border-bottom: 1px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.action-link:hover {
+    color: #005a87;
+    border-bottom-color: #005a87;
+    text-decoration: none;
+}
+
+.action-link.update-link {
+    color: #dc3545;
+    font-weight: 600;
+}
+
+.action-link.update-link:hover {
+    color: #b02a37;
+    border-bottom-color: #b02a37;
+}
+
+.action-link.delete-link {
+    color: #dc3545;
+    font-weight: 500;
+}
+
+.action-link.delete-link:hover {
+    color: #a71e2a;
+    border-bottom-color: #a71e2a;
+    background-color: #f8d7da;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.action-separator {
+    color: #ccc;
+    margin: 0 2px;
+}
+
+.module-column-2 {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.module-description {
+    color: #666;
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 0 0 0px 0;
+}
+
+.module-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+    color: #666;
+}
+
+.meta-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.meta-label {
+    font-weight: 600;
+    color: #333;
+}
+
+.version-current {
+    color: #666;
+    background: #f1f3f4;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+}
+
+.version-new {
+    color: #d63384;
+    background: #fdf2f8;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.module-author {
+    color: #007cba;
+    text-decoration: none;
+}
+
+.module-author:hover {
+    text-decoration: underline;
+}
+
+.module-column-3 {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.auto-update-section {
+    width: 100%;
+}
+
+.auto-update-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.auto-update-link {
+    color: #007cba;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 4px;
+    display: inline-block;
+    transition: all 0.2s ease;
+    text-align: center;
+}
+
+.auto-update-link:hover {
+    background: #007cba;
+    color: #fff;
+    text-decoration: none;
+}
+
+.auto-update-link i {
+    margin-right: 5px;
+}
+
+.auto-update-link.disabled {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.update-indicator {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background: #dc3545;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.no-modules {
+    text-align: center;
+    padding: 60px 20px;
+    color: #666;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-top: 20px;
+}
+
+.no-modules i {
+    font-size: 48px;
+    color: #ddd;
+    margin-bottom: 15px;
+}
+
+.no-modules h3 {
+    color: #666;
+    margin-bottom: 8px;
+    font-size: 18px;
+}
+
+.no-modules p {
+    color: #999;
+    font-size: 14px;
+    margin: 0;
+}
+
+/* Стили для страницы установки модулей */
+.install-modules-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 20px;
+    margin-top: 15px;
+}
+
+.install-module-card {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    background: #fff;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.install-module-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
+}
+
+.install-module-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+
+.install-module-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+    margin: 0;
+    flex: 1;
+}
+
+.install-module-version {
+    background: #e9ecef;
+    color: #495057;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    margin-left: 10px;
+}
+
+.install-module-description {
+    color: #666;
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 15px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.install-module-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 15px;
+    font-size: 13px;
+    color: #666;
+}
+
+.install-module-meta-item {
+    display: flex;
+    justify-content: space-between;
+}
+
+.install-module-meta-label {
+    font-weight: 600;
+    color: #333;
+}
+
+.install-module-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.install-module-btn {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.install-module-btn:hover {
+    background: #218838;
+    text-decoration: none;
+    color: white;
+}
+
+.install-module-btn:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+}
+
+.install-module-btn i {
+    font-size: 12px;
+}
+
+.install-module-link {
+    color: #007cba;
+    text-decoration: none;
+    font-size: 13px;
+}
+
+.install-module-link:hover {
+    text-decoration: underline;
+}
+
+.install-module-installed {
+    background: #d4edda;
+    color: #155724;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.install-modules-search {
+    margin-bottom: 20px;
+}
+
+.install-modules-search input {
+    width: 100%;
+    padding: 10px 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.install-modules-filter {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.filter-btn {
+    padding: 6px 12px;
+    border: 1px solid #ddd;
+    background: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s ease;
+}
+
+.filter-btn.active {
+    background: #007cba;
+    color: white;
+    border-color: #007cba;
+}
+
+.install-modules-stats {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+}
+
+.no-available-modules {
+    text-align: center;
+    padding: 40px 20px;
+    color: #666;
+}
+
+.no-available-modules i {
+    font-size: 48px;
+    color: #ddd;
+    margin-bottom: 15px;
+}
+
+/* Адаптивность */
+@media (max-width: 992px) {
+    .module-item {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .module-column-3 {
+        align-items: flex-start;
+        text-align: left;
+    }
+}
+
+@media (max-width: 768px) {
+    .module-actions-links {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .action-separator {
+        display: none;
+    }
+    
+    .update-indicator {
+        position: static;
+        align-self: flex-start;
+        margin-bottom: 10px;
+    }
+}

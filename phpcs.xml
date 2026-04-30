@@ -1,0 +1,60 @@
+<?xml version="1.0"?>
+<ruleset name="OpenCart_Module_Standard">
+    <description>Custom ruleset for OpenCart modules to ignore legacy structure issues.</description>
+
+    <!-- Использовать PSR-12 как основу -->
+    <rule ref="PSR12" />
+
+    <!-- Исключаем файлы, которые не надо проверять (например, сторонние библиотеки) -->
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+    <exclude-pattern>*/node_modules/*</exclude-pattern>
+
+    <!-- Настройки для OpenCart -->
+
+    <!-- 1. Разрешаем отсутствие namespace (актуально для OC 2.x и 3.x) -->
+    <rule ref="PSR1.Classes.ClassDeclaration.MissingNamespace">
+        <severity>0</severity>
+    </rule>
+
+    <!-- 2. Разрешаем нижнее подчеркивание в именах классов (Controller_Extension_...) -->
+    <rule ref="Squiz.Classes.ValidClassName.NotCamelCaps">
+        <severity>0</severity>
+    </rule>
+
+    <rule ref="Generic.Files.LineLength">
+        <properties>
+            <property name="lineLimit" value="200"/>
+            <property name="absoluteLineLimit" value="200"/>
+        </properties>
+    </rule>
+
+    <!-- Разрешаем методы не в camelCase (например, install_module) -->
+    <rule ref="PSR1.Methods.CamelCapsMethodName.NotCamelCaps">
+        <severity>0</severity>
+    </rule>
+
+    <!-- Разрешаем подчеркивания в именах свойств (для моделей и библиотек OpenCart) -->
+    <rule ref="Squiz.NamingConventions.ValidVariableName.PublicHasUnderscore">
+        <severity>0</severity>
+    </rule>
+    <rule ref="Squiz.NamingConventions.ValidVariableName.NotCamelCaps">
+        <severity>0</severity>
+    </rule>
+
+    <!-- 3. Разрешаем использование боковых слешей в USE (если ты их все же хочешь оставить) -->
+    <!-- 
+    <rule ref="PSR12.Namespaces.CompoundNamespaceDepth.MaxExceeded">
+        <severity>0</severity>
+    </rule> 
+    -->
+
+    <!-- 4. Игнорируем проверку на наличие Side Effects (смешивание логики и вывода) -->
+    <rule ref="PSR1.Files.SideEffects.FoundWithSymbols">
+        <severity>0</severity>
+    </rule>
+
+    <!-- Настройки отображения -->
+    <arg name="colors" />
+    <arg value="p" />
+    <!-- Показывать прогресс -->
+</ruleset>
