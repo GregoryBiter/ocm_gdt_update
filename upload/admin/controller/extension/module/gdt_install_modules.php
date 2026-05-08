@@ -467,6 +467,30 @@ class ControllerExtensionModuleGdtInstallModules extends Controller
     }
 
     /**
+     * Вспомогательный метод для получения URL сервера
+     */
+    private function getServerUrl(): string
+    {
+        return config('module_gdt_updater_server')
+            ?: getenv('GDT_UPDATE_SERVER')
+            ?: (defined('HTTP_SERVER') ? HTTP_SERVER . 'ocm_gdt_update/server' : '');
+    }
+
+    /**
+     * Вспомогательный метод для парсинга инфо о модуле
+     */
+    private function parseServerModuleInfo($info): array
+    {
+        if (is_array($info))
+            return $info;
+        if (is_string($info)) {
+            $decoded = json_decode($info, true);
+            return is_array($decoded) ? $decoded : [];
+        }
+        return [];
+    }
+
+    /**
      * Установка модуля
      */
     public function installModule()
@@ -477,81 +501,71 @@ class ControllerExtensionModuleGdtInstallModules extends Controller
 
         if (!request()->isMethod('post')) {
             $json['error'] = __('error_method_invalid');
-        } elseif (!isset($this->request->post['module_code']) || empty($this->request->post['module_code'])) {
-            $json['error'] = __('error_code_not_found');
-        } else {
-            $module_code = request()->post('module_code');
-            $version = request()->post('version', 'latest');
-            $server_module_info = array();
-            if (request()->post('server_module_info')) {
-                if (is_string(request()->post('server_module_info'))) {
-                    $decoded = json_decode(request()->post('server_module_info'), true);
-                    if (is_array($decoded)) {
-                        $server_module_info = $decoded;
-                    }
-                } elseif (is_array(request()->post('server_module_info'))) {
-                    $server_module_info = request()->post('server_module_info');
-                }
+            response()->json($json);
+            return;
+        }
+
+        $module_code = request()->post('module_code');
+        if (empty($module_code)) {
+            return response()->json(['error' => __('error_code_not_found')]);
+        }
+
+        // 2. Подготовка данных модуля
+        $server_module_info = $this->parseServerModuleInfo(request()->post('server_module_info'));
+        $server_module_info['code'] = $server_module_info['code'] ?? $module_code;
+
+        if (empty($server_module_info['code'])) {
+            $server_module_info['code'] = $module_code;
+        }
+
+        $version = request()->post('version', 'latest');
+        $version_module = !empty($server_module_info['version']) ? $server_module_info['version'] : $version;
+
+        try {
+            // 3. Получение URL сервера
+            $server_url = $this->getServerUrl();
+            if (empty($server_url)) {
+                throw new Exception(__('error_server_not_configured'));
             }
 
-            if (empty($server_module_info['code'])) {
-                $server_module_info['code'] = $module_code;
+            $api_key = config('module_gdt_updater_api_key') ?: '';
+
+            // 4. Скачивание
+            $updateService = $this->getServiceFactory()->getUpdateService();
+            $download_result = $updateService->downloadModule($server_url, $module_code, $version_module, $api_key);
+
+            if (empty($download_result['success'])) {
+                throw new Exception(sprintf(__('error_download_failed'), ($download_result['error'] ?? 'Unknown error')));
             }
 
-            $version_module = isset($server_module_info['version']) && $server_module_info['version'] !== ''
-                ? $server_module_info['version']
-                : $version;
+            $file_path = $download_result['file_path'];
 
-            try {
-                // Получаем URL сервера
-                $server_url = config('module_gdt_updater_server');
-                if (empty($server_url)) {
-                    $server_url = getenv('GDT_UPDATE_SERVER');
-                    if (empty($server_url)) {
-                        $server_url = defined('HTTP_SERVER') ? HTTP_SERVER . 'ocm_gdt_update/server' : '';
-                    }
-                }
+            // 5. Установка
+            $installService = $this->getServiceFactory()->getInstallService();
+            $install_result = $installService->installModule($file_path, $module_code, $server_module_info);
 
-                if (empty($server_url)) {
-                    $json['error'] = __('error_server_not_configured');
-                } else {
-                    $api_key = config('module_gdt_updater_api_key') ?: '';
-
-                    // Скачиваем модуль
-                    $updateService = $this->getServiceFactory()->getUpdateService();
-                    $download_result = $updateService->downloadModule($server_url, $module_code, $version_module, $api_key);
-
-                    if (!$download_result['success']) {
-                        $json['error'] = sprintf(__('error_download_failed'), ($download_result['error'] ?? 'Unknown error'));
-                    } else {
-                        // Устанавливаем модуль
-                        $installService = $this->getServiceFactory()->getInstallService();
-                        $install_result = $installService->installModule($download_result['file_path'], $module_code, $server_module_info);
-
-                        if ($install_result === true) {
-                            $json['success'] = sprintf(__('text_install_success'), $module_code);
-
-                            // Очищаем кеш
-                            $this->cache->delete('*');
-
-                            LoggerService::write('GDT Install Modules: Successfully installed module ' . $module_code);
-                        } else {
-                            $json['error'] = is_string($install_result) ? $install_result : __('error_install_failed');
-                            LoggerService::write('GDT Install Modules: Error installing module ' . $module_code . ': ' . $json['error']);
-                        }
-
-                        // Удаляем временный файл
-                        if (file_exists($download_result['file_path'])) {
-                            @unlink($download_result['file_path']);
-                        }
-                    }
-                }
-            } catch (Exception $e) {
-                $json['error'] = sprintf(__('error_general'), $e->getMessage());
-                LoggerService::write('GDT Install Modules error: ' . $e->getMessage());
+            // Удаляем временный файл сразу после попытки установки
+            if (file_exists($file_path)) {
+                @unlink($file_path);
             }
+
+            if ($install_result !== true) {
+                $error_msg = is_string($install_result) ? $install_result : __('error_install_failed');
+                throw new Exception($error_msg);
+            }
+
+            // 6. Успешное завершение
+            $this->cache->delete('*');
+            LoggerService::write("GDT Install Modules: Successfully installed module {$module_code}");
+
+            $json['success'] = sprintf(__('text_install_success'), $module_code);
+
+        } catch (Exception $e) {
+            $json['error'] = $e->getMessage();
+            LoggerService::write("GDT Install Modules error: " . $e->getMessage());
         }
 
         response()->json($json);
+        return;
     }
 }
