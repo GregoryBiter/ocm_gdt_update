@@ -228,95 +228,73 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
 
     public function update()
     {
-        $json = array();
+        $json = [];
+        $code = $this->request->get['code'] ?? null;
 
-        if (isset($this->request->get['code'])) {
-            $code = $this->request->get['code'];
-
-            // Получаем URL сервера обновлений
-            $server_url = config('module_gdt_updater_server');
-
-            // Проверяем, не пустой ли URL и устанавливаем значение по умолчанию, если нужно
-            if (empty($server_url)) {
-                // Проверяем наличие переменной окружения для Docker
-                $docker_server_url = getenv('GDT_UPDATE_SERVER');
-                if ($docker_server_url) {
-                    $server_url = $docker_server_url;
-                } elseif (defined('HTTP_SERVER')) {
-                    // Если переменной окружения нет, используем HTTP_SERVER
-                    $server_url = HTTP_SERVER . 'ocm_gdt_update/server';
-                } else {
-                    // Если ничего не подошло, используем значение по умолчанию
-                    $json['error'] = __('error_server');
-                    $this->response->addHeader('Content-Type: application/json');
-                    $this->response->setOutput(json_encode($json));
-                    return;
-                }
-            }
-
-            if (empty($server_url)) {
-                $json['error'] = __('error_server');
-            } else {
-                // Получаем информацию о модуле
-                $module = $this->getServiceFactory()->getModuleService()->getModuleByCode($code);
-
-                if ($module) {
-                    // Получаем API-ключ
-                    $api_key = config('module_gdt_updater_api_key') ?: '';
-                    // Проверяем обновление
-                    $update_info = $this->getServiceFactory()->getUpdateService()->checkModuleUpdate($server_url, $module, $api_key);
-
-
-                    // Проверяем на ошибки curl
-                    if (is_array($update_info) && isset($update_info['error'])) {
-                        if ($update_info['error'] == 'curl' && !empty($update_info['message'])) {
-                            $json['error'] = sprintf(__(self::MODULE_PATH . '.error_curl'), $update_info['message']);
-                        } elseif ($update_info['error'] == 'http' && !empty($update_info['code'])) {
-                            $json['error'] = sprintf(__(self::MODULE_PATH . '.error_http'), $update_info['code']);
-                        }
-                    } elseif ($update_info) {
-                        // Логируем начало процесса обновления
-                        LoggerService::write('GDT Updater: Starting update for module ' . $code . ' from version ' . $module['version'] . ' to ' . $update_info['version']);
-
-                        try {
-                            // Скачиваем и устанавливаем обновление через встроенный процесс OpenCart
-                            $download_result = $this->getServiceFactory()->getUpdateService()->downloadModule($server_url, $module['code'], $update_info['version'], $api_key);
-                            if ($download_result['success']) {
-                                $result = $this->getServiceFactory()->getInstallService()->installModule($download_result['file_path'], $module['code'], $update_info);
-                            } else {
-                                $result = $download_result['error'] ?? 'Ошибка загрузки модуля';
-                            }
-
-                            if ($result === true) {
-                                // Очищаем все кэши OpenCart
-                                $this->cache->delete('*');
-
-                                // Проверяем, что версия действительно обновилась
-                                $updated_module = $this->getServiceFactory()->getModuleService()->getModuleByCode($code);
-                                if ($updated_module && $updated_module['version'] === $update_info['version']) {
-                                    $json['success'] = sprintf(__(self::MODULE_PATH . '.text_update_success'), $module['name'] ?? $module['module_name']) . ' (v' . $update_info['version'] . ') через встроенный процесс OpenCart';
-                                } else {
-                                    $json['warning'] = __(self::MODULE_PATH . '.warning_version_not_updated');
-                                }
-                            } else {
-                                $json['error'] = $result;
-                            }
-                        } catch (Exception $e) {
-                            $json['error'] = __(self::MODULE_PATH . '.error_update') . ': ' . $e->getMessage();
-                        }
-                    } else {
-                        $json['error'] = __(self::MODULE_PATH . '.error_no_update');
-                    }
-                } else {
-                    $json['error'] = __(self::MODULE_PATH . '.error_module_not_found');
-                }
-            }
-        } else {
-            $json['error'] = __(self::MODULE_PATH . '.error_code');
+        // 1. Валидация
+        if (!$code) {
+            response()->json(['error' => __(self::MODULE_PATH . '.error_code')]);
+            return;
         }
 
-        $this->response->addHeader('Content-Type: application/json');
-        $this->response->setOutput(json_encode($json));
+        try {
+            // 2. Инициализация параметров
+            $server_url = $this->getServerUrl();
+            if (empty($server_url)) {
+                throw new Exception(__(self::MODULE_PATH . '.error_server'));
+            }
+
+            $module = $this->getServiceFactory()->getModuleService()->getModuleByCode($code);
+            if (!$module) {
+                throw new Exception(__(self::MODULE_PATH . '.error_module_not_found'));
+            }
+
+            $api_key = config('module_gdt_updater_api_key') ?: '';
+
+            // 3. Проверка обновлений
+            $update_info = $this->getServiceFactory()->getUpdateService()->checkModuleUpdate($server_url, $module, $api_key);
+
+            if (isset($update_info['error'])) {
+                $error_type = $update_info['error'] === 'curl' ? '.error_curl' : '.error_http';
+                $msg = $update_info['message'] ?? ($update_info['code'] ?? 'Unknown error');
+                throw new Exception(sprintf(__(self::MODULE_PATH . $error_type), $msg));
+            }
+
+            if (!$update_info) {
+                throw new Exception(__(self::MODULE_PATH . '.error_no_update'));
+            }
+
+            // 4. Процесс загрузки и установки
+            LoggerService::write("GDT Updater: Starting update for {$code} (v{$module['version']} -> v{$update_info['version']})");
+
+            $download_result = $this->getServiceFactory()->getUpdateService()->downloadModule($server_url, $module['code'], $update_info['version'], $api_key);
+
+            if (empty($download_result['success'])) {
+                throw new Exception($download_result['error'] ?? 'Ошибка загрузки модуля');
+            }
+
+            $result = $this->getServiceFactory()->getInstallService()->installModule($download_result['file_path'], $module['code'], $update_info);
+
+            if ($result !== true) {
+                throw new Exception($result);
+            }
+
+            // 5. Завершение и верификация
+            $this->cache->delete('*');
+            $updated_module = $this->getServiceFactory()->getModuleService()->getModuleByCode($code);
+
+            if ($updated_module && $updated_module['version'] === $update_info['version']) {
+                $module_name = $module['name'] ?? $module['module_name'];
+                $json['success'] = sprintf(__(self::MODULE_PATH . '.text_update_success'), $module_name) . " (v{$update_info['version']})";
+            } else {
+                $json['warning'] = __(self::MODULE_PATH . '.warning_version_not_updated');
+            }
+
+        } catch (Exception $e) {
+            $json['error'] = $e->getMessage();
+        }
+
+        response()->json($json);
     }
 
     protected function validate()
