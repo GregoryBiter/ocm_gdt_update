@@ -107,12 +107,18 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
 
         // Получаем URL сервера обновлений
         $server_url = config('module_gdt_updater_server');
-
         if (empty($server_url)) {
             $server_url = HTTP_SERVER . 'ocm_gdt_update/server';
         }
+        $api_key = config('module_gdt_updater_api_key') ?: '';
+
+        // Batch check updates with caching
+        $batch_updates = $this->getServiceFactory()->getUpdateService()->checkBatchUpdates($server_url, $installed_modules, $api_key, false);
 
         foreach ($installed_modules as $module) {
+            $code = $module['code'];
+            $update_info = $batch_updates[$code] ?? false;
+
             $module_data = array(
                 'name' => $module['name'],
                 'description' => $module['description'],
@@ -124,25 +130,10 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
                 'has_backup' => false
             );
 
-            if (!empty($server_url)) {
-                // Получаем API-ключ
-                $api_key = config('module_gdt_updater_api_key') ?: '';
-
-                // Проверяем обновления
-                $update_info = $this->getServiceFactory()->getUpdateService()->checkModuleUpdate($server_url, $module, $api_key);
-
-                if (is_array($update_info) && isset($update_info['error'])) {
-                    // Обрабатываем ошибки curl/http
-                    if ($update_info['error'] == 'curl' && !empty($update_info['message'])) {
-                        $json['error_curl'] = sprintf(__(self::MODULE_PATH . '.error_curl'), $update_info['message']);
-                    } elseif ($update_info['error'] == 'http' && !empty($update_info['code'])) {
-                        $json['error_http'] = sprintf(__(self::MODULE_PATH . '.error_http'), $update_info['code']);
-                    }
-                } elseif ($update_info) {
-                    $module_data['has_update'] = true;
-                    $module_data['new_version'] = $update_info['version'];
-                    $module_data['update_url'] = route(self::MODULE_PATH . '/update', ['code' => $module['code']], true);
-                }
+            if ($update_info && is_array($update_info) && isset($update_info['status']) && $update_info['status'] === 'update_available') {
+                $module_data['has_update'] = true;
+                $module_data['new_version'] = $update_info['version'];
+                $module_data['update_url'] = route(self::MODULE_PATH . '/update', ['code' => $module['code']], true);
             }
 
             $json['modules'][] = $module_data;
@@ -162,16 +153,12 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
 
         // Проверяем, не пустой ли URL и устанавливаем значение по умолчанию, если нужно
         if (empty($server_url)) {
-            // Проверяем наличие переменной окружения для Docker
             $docker_server_url = getenv('GDT_UPDATE_SERVER');
             if ($docker_server_url) {
                 $server_url = $docker_server_url;
             } elseif (defined('HTTP_SERVER')) {
-                // Если переменной окружения нет, используем HTTP_SERVER
                 $server_url = HTTP_SERVER . 'ocm_gdt_update/server';
             } else {
-                // Если ничего не подошло, используем значение по умолчанию
-                // $server_url = 'https://example.com/server';
                 throw new Exception(__('error_server'));
             }
         }
@@ -184,25 +171,18 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
 
             if (!empty($modules)) {
                 $json['modules'] = array();
+                $api_key = config('module_gdt_updater_api_key') ?: '';
+
+                // Принудительная свежая проверка (force_refresh = true)
+                $batch_updates = $this->getServiceFactory()->getUpdateService()->checkBatchUpdates($server_url, $modules, $api_key, true);
 
                 foreach ($modules as $module) {
-                    // Получаем API-ключ
-                    $api_key = config('module_gdt_updater_api_key') ?: '';
+                    $code = $module['code'];
+                    $update_info = $batch_updates[$code] ?? false;
 
-                    $update_info = $this->getServiceFactory()->getUpdateService()->checkModuleUpdate($server_url, $module, $api_key);
-                    LoggerService::write('GDT Updater: Checking updates for module ' . $module['code'] . ' - Current version: ' . $module['version']);
-                    LoggerService::write('GDT Updater: Update info: ' . json_encode($update_info), true);
+                    LoggerService::write('GDT Updater: Checking updates for module ' . $code . ' - Current version: ' . $module['version']);
 
-                    // Проверяем на ошибки curl
-                    if (is_array($update_info) && isset($update_info['error'])) {
-                        if ($update_info['error'] == 'curl' && !empty($update_info['message'])) {
-                            $json['error'] = sprintf(__(self::MODULE_PATH . '.error_curl'), $update_info['message']);
-                            // Не прерываем цикл, чтобы попробовать проверить другие модули
-                        } elseif ($update_info['error'] == 'http' && !empty($update_info['code'])) {
-                            $json['error'] = sprintf(__(self::MODULE_PATH . '.error_http'), $update_info['code']);
-                            // Не прерываем цикл, чтобы попробовать проверить другие модули
-                        }
-                    } elseif ($update_info) {
+                    if ($update_info && is_array($update_info) && isset($update_info['status']) && $update_info['status'] === 'update_available') {
                         $json['modules'][] = array(
                             'name' => $module['name'],
                             'code' => $module['code'],
@@ -238,6 +218,8 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
         }
 
         try {
+            $this->validatePermission('modify', self::MODULE_PATH);
+
             // 2. Инициализация параметров
             $server_url = $this->getServerUrl();
             if (empty($server_url)) {

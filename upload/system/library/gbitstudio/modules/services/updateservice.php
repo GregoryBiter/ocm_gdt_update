@@ -37,6 +37,76 @@ class UpdateService {
         
         return $this->parseUpdateResponse($response_data, $module);
     }
+
+    /**
+     * Пакетна перевірка наявності оновлень для списку модулів (як у WordPress)
+     *
+     * @param string $server_url
+     * @param array $modules
+     * @param string $api_key
+     * @param bool $force_refresh
+     * @return array [module_code => update_info|false]
+     */
+    public function checkBatchUpdates($server_url, array $modules, $api_key = '', $force_refresh = false) {
+        if (empty($modules) || empty($server_url)) {
+            return [];
+        }
+
+        $cache = $this->registry->get('cache');
+        $cache_key = 'gdt_updates_batch';
+
+        if (!$force_refresh && $cache) {
+            $cached = $cache->get($cache_key);
+            if (is_array($cached)) {
+                LoggerService::info('Loaded batch updates from cache', 'UpdateService');
+                return $cached;
+            }
+        }
+
+        LoggerService::info('Performing batch update check for ' . count($modules) . ' modules', 'UpdateService');
+
+        $url = rtrim($server_url, '/') . '/api/v1/modules/check-batch';
+        $post_modules = [];
+        foreach ($modules as $m) {
+            if (!empty($m['code'])) {
+                $post_modules[] = [
+                    'code' => $m['code'],
+                    'version' => ltrim($m['version'] ?? '0.0.0', 'v'),
+                ];
+            }
+        }
+
+        $response_data = $this->executeApiRequest($url, ['modules' => $post_modules], 15, $api_key);
+
+        $results = [];
+
+        if (isset($response_data['response'])) {
+            $json = json_decode($response_data['response'], true);
+            if (!empty($json['success']) && isset($json['results']) && is_array($json['results'])) {
+                foreach ($json['results'] as $code => $info) {
+                    if (isset($info['status']) && $info['status'] === 'update_available') {
+                        $results[$code] = $info;
+                    } else {
+                        $results[$code] = false;
+                    }
+                }
+            }
+        }
+
+        // Fallback: if server doesn't support batch, run individual checks
+        if (empty($results) && isset($response_data['error'])) {
+            LoggerService::warning('Batch check unsupported or failed, falling back to individual checks', 'UpdateService');
+            foreach ($modules as $m) {
+                $results[$m['code']] = $this->checkModuleUpdate($server_url, $m, $api_key);
+            }
+        }
+
+        if ($cache && !empty($results)) {
+            $cache->set($cache_key, $results);
+        }
+
+        return $results;
+    }
     
     /**
      * Завантажує модуль з сервера

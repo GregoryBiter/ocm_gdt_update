@@ -15,11 +15,93 @@ class ModuleService {
     }
 
     public function getInstalledModules() {
-        return $this->getModulesFromDatabase();
+        $modules = [];
+        $tracked = $this->getModulesFromDatabase();
+        foreach ($tracked as $m) {
+            $modules[$m['code']] = $m;
+        }
+
+        // Discover modules from oc_modification
+        $discoveredMods = $this->getModulesFromModifications();
+        foreach ($discoveredMods as $code => $mod) {
+            if (!isset($modules[$code])) {
+                $modules[$code] = $mod;
+            }
+        }
+
+        // Discover modules from oc_extension
+        $discoveredExts = $this->getModulesFromExtensions();
+        foreach ($discoveredExts as $code => $ext) {
+            if (!isset($modules[$code])) {
+                $modules[$code] = $ext;
+            }
+        }
+
+        return array_values($modules);
     }
 
     public function getModuleByCode($code) {
-        return $this->getModuleFromDatabase($code);
+        $module = $this->getModuleFromDatabase($code);
+        if ($module) {
+            return $module;
+        }
+
+        $all = $this->getInstalledModules();
+        foreach ($all as $m) {
+            if ($m['code'] === $code) {
+                return $m;
+            }
+        }
+
+        return null;
+    }
+
+    private function getModulesFromModifications() {
+        $mods = [];
+        try {
+            $table_query = $this->db->query("SHOW TABLES LIKE '" . DB_PREFIX . "modification'");
+            if ($table_query->num_rows > 0) {
+                $query = $this->db->query("SELECT `modification_id`, `code`, `name`, `author`, `version`, `link` FROM `" . DB_PREFIX . "modification` WHERE `status` = '1'");
+                foreach ($query->rows as $row) {
+                    $code = trim($row['code']);
+                    if ($code === '') continue;
+                    $mods[$code] = $this->formatModuleData([
+                        'code' => $code,
+                        'name' => $row['name'] ?: $code,
+                        'version' => $row['version'] ?: '1.0.0',
+                        'author' => $row['author'] ?: '',
+                        'link' => $row['link'] ?: '',
+                        'source' => 'modification',
+                    ], $code);
+                }
+            }
+        } catch (\Exception $e) {
+            LoggerService::warning('Error reading oc_modification: ' . $e->getMessage(), 'ModuleService');
+        }
+        return $mods;
+    }
+
+    private function getModulesFromExtensions() {
+        $exts = [];
+        try {
+            $table_query = $this->db->query("SHOW TABLES LIKE '" . DB_PREFIX . "extension'");
+            if ($table_query->num_rows > 0) {
+                $query = $this->db->query("SELECT `code` FROM `" . DB_PREFIX . "extension` WHERE `type` = 'module'");
+                foreach ($query->rows as $row) {
+                    $code = trim($row['code']);
+                    if ($code === '') continue;
+                    $exts[$code] = $this->formatModuleData([
+                        'code' => $code,
+                        'name' => ucfirst(str_replace('_', ' ', $code)),
+                        'version' => '1.0.0',
+                        'source' => 'extension',
+                    ], $code);
+                }
+            }
+        } catch (\Exception $e) {
+            LoggerService::warning('Error reading oc_extension: ' . $e->getMessage(), 'ModuleService');
+        }
+        return $exts;
     }
 
     private function getModulesFromDatabase() {

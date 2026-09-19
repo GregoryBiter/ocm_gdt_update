@@ -82,8 +82,11 @@ class DashboardService {
     private function checkAvailableUpdates($installed_modules, $server_url, $api_key, &$data) {
         $available_updates = [];
         
+        $batch_results = $this->updateService->checkBatchUpdates($server_url, $installed_modules, $api_key, false);
+        
         foreach ($installed_modules as $module) {
-            $update_info = $this->updateService->checkModuleUpdate($server_url, $module, $api_key);
+            $code = $module['code'];
+            $update_info = $batch_results[$code] ?? false;
             
             if (is_array($update_info) && isset($update_info['error'])) {
                 if ($update_info['error'] == 'curl') {
@@ -96,7 +99,7 @@ class DashboardService {
                 continue;
             }
             
-            if ($update_info && isset($update_info['status']) && $update_info['status'] == 'update_available') {
+            if ($update_info && is_array($update_info) && isset($update_info['status']) && $update_info['status'] == 'update_available') {
                 $module_update = [
                     'name' => $module['module_name'] ?? $module['name'],
                     'code' => $module['code'],

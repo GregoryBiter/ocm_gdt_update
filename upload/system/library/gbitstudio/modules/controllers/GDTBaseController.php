@@ -4,9 +4,18 @@ namespace Gbitstudio\Modules\Controllers;
 
 use Controller;
 use Exception;
+use Gbitstudio\Modules\RegistryHolder;
+
+require_once DIR_SYSTEM . 'library/gbitstudio/modules/helpers.php';
 
 abstract class GDTBaseController extends Controller
 {
+    public function __construct($registry)
+    {
+        parent::__construct($registry);
+        RegistryHolder::set($registry);
+    }
+
     /**
      * Send a JSON response.
      *
@@ -15,7 +24,7 @@ abstract class GDTBaseController extends Controller
     protected function jsonResponse(array $data)
     {
         $this->response->addHeader('Content-Type: application/json');
-        $this->response->setOutput(json_encode($data));
+        $this->response->setOutput(json_encode($data, JSON_UNESCAPED_UNICODE));
     }
 
     /**

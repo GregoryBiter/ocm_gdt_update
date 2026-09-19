@@ -25,6 +25,8 @@ class InstallService {
      */
     public function installModule($zip_file_path, $module_code = '', $server_module_info = array()) {
         LoggerService::info('Starting installation for ' . $module_code, 'InstallService');
+        $backup_dir = null;
+        $this->setMaintenanceMode(true);
 
         try {
             if (!file_exists($zip_file_path)) {
@@ -45,7 +47,7 @@ class InstallService {
             $filename = !empty($module_code) ? $module_code . '.ocmod.zip' : basename($zip_file_path);
             $extension_install_id = $model->addExtensionInstall($filename);
             
-                LoggerService::write('GDT Install Service: Created extension_install_id: ' . $extension_install_id);
+            LoggerService::write('GDT Install Service: Created extension_install_id: ' . $extension_install_id);
 
             // Етап 1: Розпакування
             $extract_dir = $this->unzipModule($temp_file, $install_token, $upload_dir);
@@ -53,7 +55,10 @@ class InstallService {
                 throw new \Exception('Unzip error: ' . $extract_dir);
             }
 
-            // Етап 2: Переміщення файлів
+            // Етап 2: Створення тимчасового бэкапу існуючих файлів для відкату (Rollback)
+            $backup_dir = $this->backupExistingFiles($extract_dir, $module_code ?: basename($zip_file_path));
+
+            // Етап 3: Переміщення файлів
             $move_result = $this->moveModuleFiles($extract_dir, $extension_install_id);
             if (!is_array($move_result)) {
                 throw new \Exception('Move error: ' . $move_result);
@@ -61,28 +66,39 @@ class InstallService {
             
             $installed_paths = $move_result;
 
-            // Етап 3: Обробка XML
+            // Етап 4: Обробка XML
             $xml_result = $this->processModuleXml($extract_dir, $extension_install_id);
             if ($xml_result !== true && $xml_result !== false) {
                 throw new \Exception('XML processing error: ' . $xml_result);
             }
+
+            // Етап 5: Запуск скрипта оновлення/встановлення (upgrade.php / install.php)
+            $this->executeModuleScript($extract_dir, $module_code);
             
-            // Етап 4: Збереження в базу даних
+            // Етап 6: Збереження в базу даних
             $save_result = $this->saveModuleToDatabase($extract_dir, $module_code, $installed_paths, $server_module_info, $temp_file);
             if ($save_result !== true) {
                 throw new \Exception((string)$save_result);
             }
 
-            // Етап 5: Очищення
+            // Етап 7: Автоматичне оновлення кэшу модифікаторів OpenCart (OCMOD Refresh)
+            $this->refreshModifications();
+
+            // Етап 8: Очищення тимчасових файлів
             $this->cleanupInstallation($extract_dir, $temp_file);
 
-            LoggerService::info('Successfully installed module', 'InstallService');
+            LoggerService::info('Successfully installed module ' . $module_code, 'InstallService');
 
             return true;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            if ($backup_dir) {
+                $this->restoreBackup($backup_dir);
+            }
             $error = 'Installation error: ' . $e->getMessage();
-                LoggerService::write('GDT Install Service error: ' . $error);
+            LoggerService::write('GDT Install Service error: ' . $error);
             return $error;
+        } finally {
+            $this->setMaintenanceMode(false);
         }
     }
     
@@ -393,15 +409,23 @@ class InstallService {
         LoggerService::info('Starting uninstallation for ' . $code, 'InstallService');
 
         try {
-            // 1. Отримуємо дані модуля з БД за кодом
-            $query = $this->db->query("SELECT * FROM `" . DB_PREFIX . "gdt_modules` WHERE `code` = '" . $this->db->escape($code) . "' LIMIT 1");
-            
-            if ($query->num_rows == 0) {
-                throw new \Exception('Module ' . $code . ' not found in GDT database');
+            // 1. Отримуємо файли модуля з таблиці ocm_module_files або ocm_modules
+            $paths = [];
+            $files_query = $this->db->query("SELECT `file_path` FROM `" . DB_PREFIX . "ocm_module_files` WHERE `module_code` = '" . $this->db->escape($code) . "'");
+            if ($files_query->num_rows > 0) {
+                foreach ($files_query->rows as $r) {
+                    $paths[] = $r['file_path'];
+                }
+            } else {
+                // Fallback check legacy gdt_modules
+                $table_check = $this->db->query("SHOW TABLES LIKE '" . DB_PREFIX . "gdt_modules'");
+                if ($table_check->num_rows > 0) {
+                    $legacy_query = $this->db->query("SELECT `paths` FROM `" . DB_PREFIX . "gdt_modules` WHERE `code` = '" . $this->db->escape($code) . "' LIMIT 1");
+                    if ($legacy_query->num_rows > 0) {
+                        $paths = json_decode($legacy_query->row['paths'], true) ?: [];
+                    }
+                }
             }
-
-            $module_row = $query->row;
-            $paths = json_decode($module_row['paths'], true);
 
             // 2. Видаляємо файли
             if (is_array($paths)) {
@@ -428,7 +452,6 @@ class InstallService {
                 }
 
                 // Потім видаляємо папки (в зворотному порядку, щоб видалити підпапки першими)
-                // Але ми видаляємо тільки порожні папки
                 rsort($dirs_to_delete);
                 foreach ($dirs_to_delete as $dir) {
                     if (is_dir($dir)) {
@@ -452,13 +475,18 @@ class InstallService {
                 LoggerService::write('GDT Install Service: Deleted modification: ' . $code);
             }
 
-            // 4. Видаляємо інформацію про встановлення з бази OC (якщо встановлено через ZIP)
+            // 4. Видаляємо інформацію про встановлення з бази OC
             $this->registry->get('load')->model('setting/extension');
             $this->db->query("DELETE FROM " . DB_PREFIX . "extension_install WHERE filename LIKE '" . $this->db->escape($code) . ".ocmod.zip'");
 
-            // 5. Видаляємо запис з нашої бази
-            $this->db->query("DELETE FROM `" . DB_PREFIX . "gdt_modules` WHERE `code` = '" . $this->db->escape($code) . "'");
-            
+            // 5. Видаляємо записи з OCM таблиць
+            $this->db->query("DELETE FROM `" . DB_PREFIX . "ocm_modules` WHERE `code` = '" . $this->db->escape($code) . "'");
+            $this->db->query("DELETE FROM `" . DB_PREFIX . "ocm_module_files` WHERE `module_code` = '" . $this->db->escape($code) . "'");
+            $this->db->query("DELETE FROM `" . DB_PREFIX . "ocm_module_versions` WHERE `module_code` = '" . $this->db->escape($code) . "'");
+
+            // 6. Оновлюємо модифікатори OpenCart (OCMOD Refresh)
+            $this->refreshModifications();
+
             LoggerService::info('Successfully uninstalled module ' . $code, 'InstallService');
             
             return true;
@@ -611,5 +639,131 @@ class InstallService {
                 KEY `module_code` (`module_code`)
             ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
         ");
+    }
+
+    public function refreshModifications(): void {
+        try {
+            $this->registry->get('load')->controller('marketplace/modification/refresh');
+            LoggerService::info('Triggered marketplace/modification/refresh', 'InstallService');
+        } catch (\Throwable $e) {
+            LoggerService::warning('Could not run modification controller refresh directly: ' . $e->getMessage(), 'InstallService');
+        }
+
+        if (function_exists('opcache_reset')) {
+            @opcache_reset();
+        }
+    }
+
+    private function setMaintenanceMode(bool $active): void {
+        $lock_file = $this->getMaintenanceLockFile();
+        if ($active) {
+            @file_put_contents($lock_file, json_encode(['time' => time(), 'process' => 'ocm_updater']));
+        } else {
+            if (file_exists($lock_file)) {
+                @unlink($lock_file);
+            }
+        }
+    }
+
+    private function getMaintenanceLockFile(): string {
+        $root = defined('DIR_STORAGE') ? DIR_STORAGE : sys_get_temp_dir() . '/';
+        return rtrim($root, '/') . '/.ocm_maintenance';
+    }
+
+    private function backupExistingFiles(string $extract_dir, string $module_code): ?string {
+        $upload_dir = $extract_dir . '/upload/';
+        if (!is_dir($upload_dir)) {
+            return null;
+        }
+
+        $backup_root = defined('DIR_STORAGE') ? DIR_STORAGE . 'backup/ocm_backups/' : sys_get_temp_dir() . '/ocm_backups/';
+        $backup_dir = $backup_root . preg_replace('/[^a-zA-Z0-9_-]/', '', $module_code) . '_' . date('Ymd_His') . '_' . uniqid() . '/';
+
+        $files = [];
+        $path = [$upload_dir . '*'];
+        while (count($path) != 0) {
+            $next = array_shift($path);
+            foreach ((array)glob($next) as $file) {
+                if (is_dir($file)) {
+                    $path[] = $file . '/*';
+                } else {
+                    $files[] = $file;
+                }
+            }
+        }
+
+        $backed_up = 0;
+        foreach ($files as $file) {
+            $relative = substr($file, strlen($upload_dir));
+            $destination = $this->getDestinationPath($relative);
+            if (file_exists($destination) && is_file($destination)) {
+                $target = $backup_dir . $relative;
+                $target_dir = dirname($target);
+                if (!is_dir($target_dir)) {
+                    @mkdir($target_dir, 0777, true);
+                }
+                if (@copy($destination, $target)) {
+                    $backed_up++;
+                }
+            }
+        }
+
+        if ($backed_up > 0) {
+            LoggerService::info("Backed up {$backed_up} existing files to {$backup_dir}", 'InstallService');
+            return $backup_dir;
+        }
+
+        return null;
+    }
+
+    private function restoreBackup(?string $backup_dir): void {
+        if (!$backup_dir || !is_dir($backup_dir)) {
+            return;
+        }
+
+        LoggerService::warning("Restoring backup from {$backup_dir}", 'InstallService');
+
+        $files = [];
+        $path = [$backup_dir . '*'];
+        while (count($path) != 0) {
+            $next = array_shift($path);
+            foreach ((array)glob($next) as $file) {
+                if (is_dir($file)) {
+                    $path[] = $file . '/*';
+                } else {
+                    $files[] = $file;
+                }
+            }
+        }
+
+        foreach ($files as $file) {
+            $relative = substr($file, strlen($backup_dir));
+            $destination = $this->getDestinationPath($relative);
+            $dest_dir = dirname($destination);
+            if (!is_dir($dest_dir)) {
+                @mkdir($dest_dir, 0777, true);
+            }
+            @copy($file, $destination);
+        }
+
+        LoggerService::info("Backup restoration completed", 'InstallService');
+    }
+
+    private function executeModuleScript(string $extract_dir, string $module_code): void {
+        $upgrade_script = $extract_dir . '/upgrade.php';
+        $install_script = $extract_dir . '/install.php';
+
+        $script = file_exists($upgrade_script) ? $upgrade_script : (file_exists($install_script) ? $install_script : null);
+
+        if ($script) {
+            LoggerService::info("Executing module script: " . basename($script), 'InstallService');
+            try {
+                $registry = $this->registry;
+                $db = $this->db;
+                include $script;
+            } catch (\Throwable $e) {
+                LoggerService::error("Error executing script " . basename($script) . ": " . $e->getMessage(), 'InstallService');
+            }
+        }
     }
 }

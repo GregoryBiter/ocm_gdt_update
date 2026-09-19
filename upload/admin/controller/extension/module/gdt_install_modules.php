@@ -1,6 +1,10 @@
 <?php
-use \Gbitstudio\Modules\Services\LoggerService;
-class ControllerExtensionModuleGdtInstallModules extends Controller
+require_once DIR_SYSTEM . 'library/gbitstudio/modules/controllers/GDTBaseController.php';
+
+use Gbitstudio\Modules\Controllers\GDTBaseController;
+use Gbitstudio\Modules\Services\LoggerService;
+
+class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
 {
     const PATH_INSTALL = 'extension/module/gdt_install_modules';
     const PATH_UPDATER = 'extension/module/gdt_updater';
