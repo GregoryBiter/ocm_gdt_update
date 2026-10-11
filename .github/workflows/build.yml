@@ -2,35 +2,99 @@ name: Build and Release OpenCart Package
 
 on:
   push:
-    tags:
-      - "*"
+    tags: ['*']
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: module-release
+  cancel-in-progress: false
 
 jobs:
-  build-release:
+  build:
     runs-on: ubuntu-latest
-
+    outputs:
+      release_tag: ${{ steps.release.outputs.tag }}
+      release_sha: ${{ steps.commit.outputs.sha }}
+    permissions:
+      contents: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Prepare archive name
-        shell: bash
-        run: |
-          tag_name="${GITHUB_REF_NAME}"
-          archive_name="ocm_gdt_update-${tag_name}.ocmod.zip"
-          echo "ARCHIVE_NAME=${archive_name}" >> "${GITHUB_ENV}"
-
-      - name: Build OpenCart archive
-        shell: bash
-        run: |
-          mkdir -p dist
-          zip -r "dist/${ARCHIVE_NAME}" upload
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - uses: actions/checkout@v4
         with:
-          files: dist/${{ env.ARCHIVE_NAME }}
-          generate_release_notes: true
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+      - name: Resolve and validate release tag
+        id: release
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          tag = os.environ['REF_NAME']
+          if not re.fullmatch(r'v?\d+(?:\.\d+)*(?:[-+][A-Za-z0-9.-]+)?', tag) or len(tag.removeprefix('v')) > 32:
+              raise SystemExit('Invalid release tag')
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write(f'RELEASE_TAG={tag}\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'tag={tag}\n')
+          PY
+      - name: Synchronize metadata before tagging
+        run: python3 .github/scripts/package.py --sync-only
+      - name: Commit version and create release tag
+        id: commit
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet -- opencart-module.json; then
+            if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+              echo 'Cannot move a tag with an existing GitHub Release'
+              exit 1
+            fi
+            old_tag=$(git rev-parse "refs/tags/$RELEASE_TAG")
+            old_commit=$(git rev-parse HEAD)
+            git fetch origin "$DEFAULT_BRANCH"
+            if [[ "$(git rev-parse FETCH_HEAD)" != "$old_commit" ]]; then
+              echo 'Version synchronization requires a tag on the current default branch HEAD'
+              exit 1
+            fi
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add opencart-module.json
+            git commit -m "chore: sync module version to $RELEASE_TAG"
+            git tag --force "$RELEASE_TAG"
+            git push --atomic \
+              --force-with-lease="refs/heads/$DEFAULT_BRANCH:$old_commit" \
+              --force-with-lease="refs/tags/$RELEASE_TAG:$old_tag" \
+              origin "HEAD:refs/heads/$DEFAULT_BRANCH" "refs/tags/$RELEASE_TAG"
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Normalize metadata and build package
+        run: python3 .github/scripts/package.py --strict
+      - uses: actions/upload-artifact@v4
+        with:
+          name: module-package
+          path: dist/*.ocmod.zip
+          if-no-files-found: error
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" dist/*.ocmod.zip --clobber
+
+  deploy:
+    needs: build
+    uses: ./.github/workflows/deploy.yml
+    with:
+      release_tag: ${{ needs.build.outputs.release_tag }}
+      release_sha: ${{ needs.build.outputs.release_sha }}
+    permissions:
+      contents: read
+    secrets: inherit
