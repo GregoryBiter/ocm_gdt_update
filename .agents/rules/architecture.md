@@ -7,10 +7,13 @@ activation: Always on
 
 This rule ensures that all development on the `ocm_gdt_update` module follows the established Service-Oriented Architecture (SOA) and database-first approach.
 
-## 1. Database-First Principle
-- **CRITICAL**: Do NOT use `opencart-module.json` files in `DIR_SYSTEM . "modules/"` for module discovery or data storage for installed modules.
-- Always use the `{DB_PREFIX}ocm_modules`, `{DB_PREFIX}ocm_module_files`, and `{DB_PREFIX}ocm_module_versions` tables.
-- Metadata is stored in the `metadata_json` column and file tracking in `ocm_module_files`.
+## 1. Registry and Database Responsibilities
+- `DIR_STORAGE . 'modules.json'` is authoritative for installed module membership and versions.
+- Use `ModuleRegistryService` via `ServiceFactory`. Do not discover modules from `extension`, `modification`, or loose metadata files.
+- Import active `ocm_modules` records once, only when the registry is absent. Invalid JSON must produce an error without replacement.
+- Keep `ocm_modules` as a compatibility mirror, `ocm_module_files` for file ownership, and `ocm_module_versions` for history.
+- Package metadata has version priority; use a server version only when bound to the downloaded release. Unknown versions disable automatic updates.
+- Use a stable separate lock file, reread under lock, and atomically rename a temporary file in the same storage directory.
 
 ## 2. Service-Oriented Architecture
 - Logic must be encapsulated in Services located in `upload/system/library/gbitstudio/modules/services/`.

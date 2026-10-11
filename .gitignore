@@ -16,3 +16,4 @@ phpunit.xml.dist
 .phpunit.cache/
 .ocm_files.json
 .opencart
+.ocm/files.json

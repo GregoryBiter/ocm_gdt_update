@@ -1,0 +1,52 @@
+name: Deploy to OpenCart Update Server
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        required: true
+        type: string
+      release_sha:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: update-server
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: module-package
+          path: built-package
+      - name: Check tag and package metadata again
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: python3 .github/scripts/package.py --strict --verify-artifact built-package
+      - name: Upload to OpenCart
+        env:
+          UPDATE_SERVER_URL: ${{ vars.UPDATE_SERVER_URL }}
+          UPDATE_SERVER_API_KEY: ${{ secrets.UPDATE_SERVER_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${UPDATE_SERVER_URL:?Set UPDATE_SERVER_URL in repository or environment variables}"
+          : "${UPDATE_SERVER_API_KEY:?Set UPDATE_SERVER_API_KEY in secrets}"
+          endpoint=$(python3 -c 'import os,urllib.parse as u; p=u.urlsplit(os.environ["UPDATE_SERVER_URL"]); assert p.scheme=="https" and p.netloc and not p.username and not p.fragment, "Use an HTTPS catalog URL"; q=u.parse_qs(p.query); q["route"]=["gdt_update_server/api/upload"]; path=p.path if p.path.endswith("/index.php") else p.path.rstrip("/")+"/index.php"; print(u.urlunsplit((p.scheme,p.netloc,path,u.urlencode(q,doseq=True),"")))')
+          curl --silent --show-error --fail-with-body \
+            --connect-timeout 15 --max-time 300 \
+            --request POST "$endpoint" \
+            --header "X-API-Key: $UPDATE_SERVER_API_KEY" \
+            --form "module_file=@$ARCHIVE_PATH;type=application/zip" \
+            --form-string "code=$MODULE_CODE" \
+            --form-string "version=$MODULE_VERSION" \
+            --form-string "name=$MODULE_NAME" \
+            --form-string "author=$MODULE_AUTHOR" \
+            --output deploy-response.json
+          python3 -c 'import json; r=json.load(open("deploy-response.json")); assert r.get("success") is True, r; print("Published successfully")'

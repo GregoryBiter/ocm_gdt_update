@@ -140,3 +140,11 @@ system/
 
 - [ ] **Оптимизация производительности**
   - [ ] Улучшить скорость работы с большими объемами данных
+
+## Installed module registry
+
+Installed module membership and versions are stored in `DIR_STORAGE . 'modules.json'`. The file is created on first access by importing active `ocm_modules` records once. Standard extensions and modifications are not added automatically. Back up this file along with your database. An existing empty registry remains empty; a corrupted registry must be restored from backup. File ownership and installation history remain in the database. See `docs/ARCHITECTURE.md` for lifecycle and failure handling.
+
+## Update server types
+
+Settings now include **Laravel** (default for existing installations) and **OpenCart**. For OpenCart enter the catalog root URL, including a subdirectory if applicable; all API URLs are generated as native `index.php?route=gdt_update_server/api/...` routes. Read access uses the configured API key. Changing server type, address, key or installed versions changes the batch-check cache identity, so results from an old server are not reused. Existing Laravel endpoints and settings remain compatible.

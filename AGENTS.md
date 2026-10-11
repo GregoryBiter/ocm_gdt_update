@@ -19,18 +19,18 @@ It provides automatic update checks against an external update server, archive e
 
 ## 2. Core Architectural Principles
 
-### 2.1. Database-First Principle (CRITICAL)
-- **NO FILESYSTEM JSON STORAGE FOR INSTALLED MODULES**: Do **NOT** use or search for `opencart-module.json` files in `DIR_SYSTEM . "modules/"` for discovering or reading metadata of installed modules.
-- Installed module records and tracking files are stored exclusively in the database tables:
-  - `{DB_PREFIX}ocm_modules`: (`module_id`, `code`, `name`, `type`, `installed_version`, `source`, `metadata_json`, `status`, `installed_at`, `updated_at`).
-  - `{DB_PREFIX}ocm_module_files`: (`file_id`, `module_code`, `file_path`, `file_hash`, `installed_at`, `updated_at`, `removed_at`).
-  - `{DB_PREFIX}ocm_module_versions`: (`version_id`, `module_code`, `version`, `package_hash`, `index_hash`, `changelog`, `source`, `published_at`, `applied_at`).
-  *(Legacy compatibility table: `{DB_PREFIX}gdt_modules`)*
+### 2.1. Registry and Database Responsibilities
+- Installed module membership and versions are authoritative in `DIR_STORAGE . 'modules.json'` (schema version 1).
+- Use `ModuleRegistryService` through `ServiceFactory`; never discover installed modules from OpenCart extensions or modifications.
+- Only when the JSON file is absent, import active records from `{DB_PREFIX}ocm_modules` once. Corruption is an error, never a reason to re-import.
+- `{DB_PREFIX}ocm_modules` remains a compatibility mirror; `{DB_PREFIX}ocm_module_files` owns file tracking and `{DB_PREFIX}ocm_module_versions` stores history.
+- Read package metadata only during installation. An unknown installed version stays `0.0.0`; do not infer it from the latest server release.
+- Serialize registry mutations with a separate lock file and publish via atomic rename.
 
 ### 2.2. Service-Oriented Architecture (SOA)
 - Business logic is strictly separated from OpenCart controllers and models, encapsulated in domain services located in `upload/system/library/gbitstudio/modules/services/`.
 - **Services Directory**: `upload/system/library/gbitstudio/modules/services/`
-  - `ModuleService`: Retrieval and management of installed modules from DB.
+  - `ModuleService`: Retrieval of installed metadata from modules.json and file paths from DB.
   - `InstallService`: ZIP archive extraction, validation, filesystem copying, and DB registration.
   - `UpdateService`: Remote communication with update servers, version checks, and download management.
   - `LoggerService`: Centralized logging.
