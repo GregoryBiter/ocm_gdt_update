@@ -34,6 +34,7 @@
           <div class="modal-body">
             <form id="form-settings">
               <div class="form-group">
+                <label for="input-server-type">Тип сервера</label><select name="module_gdt_updater_server_type" id="input-server-type" class="form-control"><option value="laravel">Laravel</option><option value="opencart">OpenCart</option></select>
                 <label for="input-server">Сервер обновлений</label>
                 <input type="text" name="module_gdt_updater_server" id="input-server" class="form-control" placeholder="URL сервера обновлений" />
               </div>
@@ -196,7 +197,7 @@
                     <!-- Версия и код в одной строке -->
                     <div class="meta-item">
                       <span class="meta-label">Версия:</span>
-                      <span class="version-current">{{ module.version }}</span>
+                      <span class="version-current">{{ module.version == '0.0.0' ? 'Версия неизвестна' : module.version }}</span>
                       {% if module.has_update %}
                         → <span class="version-new">{{ module.new_version }}</span>
                       {% endif %}
@@ -221,6 +222,9 @@
                 <div class="module-column-3">
                   <div class="auto-update-section">
                     <label class="auto-update-label">Автообновления</label>
+                    {% if module.version == '0.0.0' %}
+                      <span>Недоступно: версия неизвестна</span>
+                    {% else %}
                     <a href="#" class="auto-update-link" data-code="{{ module.code }}" data-current="{{ module.auto_update ? '1' : '0' }}">
                       {% if module.auto_update %}
                         <i class="fa fa-toggle-on"></i> Включены
@@ -228,6 +232,7 @@
                         <i class="fa fa-toggle-off"></i> Отключены
                       {% endif %}
                     </a>
+                    {% endif %}
                   </div>
                 </div>
                 
@@ -796,6 +801,7 @@ function loadSettings() {
         dataType: 'json',
         success: function(json) {
             $('#input-server').val(json.module_gdt_updater_server || '');
+            $('#input-server-type').val(json.module_gdt_updater_server_type || 'laravel');
             $('#input-api-key').val(json.module_gdt_updater_api_key || '');
             $('#input-status').val(json.module_gdt_updater_status || '0');
         },

@@ -45,6 +45,7 @@
           <div class="modal-body">
             <form @submit.prevent="saveSettings()">
               <div class="form-group">
+                <label>Тип сервера</label><select class="form-control" x-model="settings.server_type"><option value="laravel">Laravel</option><option value="opencart">OpenCart</option></select>
                 <label>URL сервера обновлений</label>
                 <input type="text" x-model="settings.server" class="form-control" />
               </div>
@@ -155,7 +156,9 @@
       </div>
       <div class="panel-body">
         {% if current_page == 'installed' %}
-          {% if modules is empty %}
+          {% if registry_error %}
+            <div class="alert alert-danger">{{ registry_error }}</div>
+          {% elseif modules is empty %}
             <div class="pw-no-modules">
               <i class="fa fa-inbox"></i>
               <h3>Нет установленных модулей</h3>
@@ -195,7 +198,7 @@
                     <td class="col-desc">
                       <div class="pw-module-description"><p x-text="module.description"></p></div>
                       <div class="pw-module-meta">
-                        <span x-text="'Версия ' + module.version"></span>
+                        <span x-text="module.version === '0.0.0' ? 'Версия неизвестна' : 'Версия ' + module.version"></span>
                         <template x-if="module.author">
                           <span> | Автор: 
                             <template x-if="module.author_url">
@@ -215,7 +218,8 @@
                       </div>
                     </td>
                     <td class="col-auto">
-                      <a href="#" @click.prevent="toggleAutoUpdate(module)" class="auto-update-link">
+                      <span x-show="module.version === '0.0.0'">Недоступно: версия неизвестна</span>
+                      <a x-show="module.version !== '0.0.0'" href="#" @click.prevent="toggleAutoUpdate(module)" class="auto-update-link">
                         <span x-show="module.auto_update" style="color:#0071a1"><i class="fa fa-toggle-on"></i> Включено</span>
                         <span x-show="!module.auto_update" style="color:#2271b1"><i class="fa fa-toggle-off"></i> Включить</span>
                       </a>
@@ -528,6 +532,7 @@ function gdtInstallModules() {
         },
         settings: {
             server: '',
+            server_type: 'laravel',
             api_key: '',
             status: '1'
         },
@@ -710,6 +715,7 @@ function gdtInstallModules() {
                 .then(r => r.json())
                 .then(json => {
                     this.settings.server = json.module_gdt_updater_server || '';
+                    this.settings.server_type = json.module_gdt_updater_server_type || 'laravel';
                     this.settings.api_key = json.module_gdt_updater_api_key || '';
                     this.settings.status = json.module_gdt_updater_status || '0';
                     $('#modal-settings').modal('show');
@@ -720,6 +726,7 @@ function gdtInstallModules() {
             this.isSavingSettings = true;
             const formData = new FormData();
             formData.append('module_gdt_updater_server', this.settings.server);
+            formData.append('module_gdt_updater_server_type', this.settings.server_type);
             formData.append('module_gdt_updater_api_key', this.settings.api_key);
             formData.append('module_gdt_updater_status', this.settings.status);
             formData.append('user_token', this.userToken);

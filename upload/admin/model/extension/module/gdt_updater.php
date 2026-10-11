@@ -1,24 +1,28 @@
 <?php
-use \Gbitstudio\Modules\Services\LoggerService;
-class ModelExtensionModuleGdtUpdater extends Model {
-    
+
+use Gbitstudio\Modules\Services\LoggerService;
+
+class ModelExtensionModuleGdtUpdater extends Model
+{
     /**
      * Отримує фабрику сервісів
-     * 
+     *
      * @return \Gbitstudio\Modules\ServiceFactory
      */
-    private function getServiceFactory() {
+    private function getServiceFactory()
+    {
         if (!$this->registry->has('gb_modules')) {
             $this->registry->set('gb_modules', new \Gbitstudio\Modules\ServiceFactory($this->registry));
         }
-        
+
         return $this->registry->get('gb_modules');
     }
-    
+
     /**
      * Створює необхідні таблиці в базі даних
      */
-    public function createTables() {
+    public function createTables()
+    {
         $this->db->query("
             CREATE TABLE IF NOT EXISTS `" . DB_PREFIX . "ocm_modules` (
                 `module_id` INT(11) NOT NULL AUTO_INCREMENT,
@@ -70,7 +74,8 @@ class ModelExtensionModuleGdtUpdater extends Model {
     /**
      * Видаляє таблиці модуля
      */
-    public function dropTables() {
+    public function dropTables()
+    {
         $this->db->query("DROP TABLE IF EXISTS `" . DB_PREFIX . "ocm_module_versions`");
         $this->db->query("DROP TABLE IF EXISTS `" . DB_PREFIX . "ocm_module_files`");
         $this->db->query("DROP TABLE IF EXISTS `" . DB_PREFIX . "ocm_modules`");
@@ -79,79 +84,28 @@ class ModelExtensionModuleGdtUpdater extends Model {
 
     /**
      * Отримує модулі з бази даних
-     * 
+     *
      * @return array
      */
-    public function getModulesFromDatabase() {
-        $modules = [];
-        
-        try {
-            $query = "SELECT * FROM `" . DB_PREFIX . "ocm_modules` ORDER BY `updated_at` DESC";
-            $result = $this->db->query($query);
-            
-            if ($result->num_rows > 0) {
-                foreach ($result->rows as $row) {
-                    $module_data = json_decode($row['metadata_json'], true);
-                    if ($module_data) {
-                        $module_data['code'] = $row['code'];
-                        $module_data['version'] = $row['installed_version'];
-                        $module_data['name'] = $row['name'];
-                        $module_data['paths'] = [];
-                        $paths_query = $this->db->query("SELECT `file_path` FROM `" . DB_PREFIX . "ocm_module_files` WHERE `module_code` = '" . $this->db->escape($row['code']) . "' AND `removed_at` IS NULL");
-                        foreach ($paths_query->rows as $path_row) {
-                            $module_data['paths'][] = $path_row['file_path'];
-                        }
-                        $modules[] = $module_data;
-                    }
-                }
-            }
-        } catch (Exception $e) {
-            LoggerService::write('GDT Module Manager: Error getting modules from database: ' . $e->getMessage());
-        }
-        
-        return $modules;
+    public function getModulesFromDatabase()
+    {
+        return $this->getServiceFactory()->getModuleService()->getInstalledModules();
     }
-    
-    /**
-     * Отримує модуль з бази даних за кодом
-     * 
-     * @param string $code
-     * @return array|null
-     */
-    public function getModuleFromDatabase($code) {
-        try {
-            $query = "SELECT * FROM `" . DB_PREFIX . "ocm_modules` WHERE `code` = '" . $this->db->escape($code) . "' LIMIT 1";
-            $result = $this->db->query($query);
-            
-            if ($result->num_rows > 0) {
-                $row = $result->row;
-                $module_data = json_decode($row['metadata_json'], true);
-                if ($module_data) {
-                    $module_data['code'] = $row['code'];
-                    $module_data['version'] = $row['installed_version'];
-                    $module_data['name'] = $row['name'];
-                    $module_data['paths'] = [];
-                    $paths_query = $this->db->query("SELECT `file_path` FROM `" . DB_PREFIX . "ocm_module_files` WHERE `module_code` = '" . $this->db->escape($row['code']) . "' AND `removed_at` IS NULL");
-                    foreach ($paths_query->rows as $path_row) {
-                        $module_data['paths'][] = $path_row['file_path'];
-                    }
-                    return $module_data;
-                }
-            }
-        } catch (Exception $e) {
-            LoggerService::write('GDT Module Manager: Error getting module from database: ' . $e->getMessage());
-        }
-        
-        return null;
+
+    /** Compatibility method: installed metadata now comes from modules.json. */
+    public function getModuleFromDatabase($code)
+    {
+        return $this->getServiceFactory()->getModuleService()->getModuleByCode($code);
     }
-    
+
     /**
      * Витягує опис з XML
-     * 
+     *
      * @param string $xml
      * @return string
      */
-    private function extractDescription($xml) {
+    private function extractDescription($xml)
+    {
         try {
             $dom = new DOMDocument('1.0', 'UTF-8');
             $dom->loadXml($xml);
@@ -161,16 +115,17 @@ class ModelExtensionModuleGdtUpdater extends Model {
             return '';
         }
     }
-    
+
     /**
      * Автоматическая проверка и запуск обновления модулей при загрузке dashboard
      */
-    public function autoCheckUpdate() {
+    public function autoCheckUpdate()
+    {
         $autoUpdateService = $this->getServiceFactory()->getAutoUpdateService();
         $result = $autoUpdateService->autoCheckAndUpdate();
-        
+
         $this->load->language('extension/module/gdt_updater');
-        
+
         if (!empty($result['updated'])) {
             $this->session->data['success'] = sprintf($this->language->get('text_auto_updated'), implode(', ', $result['updated']));
         }
@@ -183,7 +138,8 @@ class ModelExtensionModuleGdtUpdater extends Model {
     /**
      * Проверка наличия обновлений для конкретного модуля
      */
-    public function checkForUpdate($module_code = null) {
+    public function checkForUpdate($module_code = null)
+    {
         if (!$module_code) {
             return ['available' => false];
         }
@@ -195,7 +151,8 @@ class ModelExtensionModuleGdtUpdater extends Model {
     /**
      * Выполнение обновления для конкретного модуля
      */
-    public function performUpdate($module_code, $update_info = null) {
+    public function performUpdate($module_code, $update_info = null)
+    {
         if (!$module_code) {
             return 'Не указан код модуля';
         }

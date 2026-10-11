@@ -1,4 +1,5 @@
 <?php
+
 require_once DIR_SYSTEM . 'library/gbitstudio/modules/controllers/GDTBaseController.php';
 
 use Gbitstudio\Modules\Controllers\GDTBaseController;
@@ -6,13 +7,13 @@ use Gbitstudio\Modules\Services\LoggerService;
 
 class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
 {
-    const PATH_INSTALL = 'extension/module/gdt_install_modules';
-    const PATH_UPDATER = 'extension/module/gdt_updater';
+    public const PATH_INSTALL = 'extension/module/gdt_install_modules';
+    public const PATH_UPDATER = 'extension/module/gdt_updater';
     private $error = array();
 
     /**
      * Отримує фабрику сервісів
-     * 
+     *
      * @return \Gbitstudio\Modules\ServiceFactory
      */
     private function getServiceFactory()
@@ -232,6 +233,7 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
         } catch (\Exception $e) {
             LoggerService::write('GDT installed() error: ' . $e->getMessage());
             $data['modules'] = array();
+            $data['registry_error'] = $e->getMessage();
         }
 
         $data = array_merge($data, $this->layout());
@@ -269,6 +271,7 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
                 'delete_url' => '',
                 'settings_url' => '',
                 'auto_update' => false,
+                'version_known' => $module['version'] !== '0.0.0',
             );
 
             // Ссылка на настройки модуля
@@ -291,7 +294,7 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
 
             // Настройка автообновления
             $auto_modules = $this->getConfig('module_gdt_updater_auto_modules') ?: array();
-            $module_data['auto_update'] = in_array($module['code'], $auto_modules);
+            $module_data['auto_update'] = $module['version'] !== '0.0.0' && in_array($module['code'], $auto_modules);
 
             $modules[] = $module_data;
         }
@@ -561,7 +564,7 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
                                 $server_module_info[$k] = $v;
                             }
                         }
-                        if (!empty($check_info['version'])) {
+                        if (($version === 'latest' || empty($version)) && !empty($check_info['version'])) {
                             $server_module_info['version'] = $check_info['version'];
                         }
                     }
@@ -570,7 +573,8 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
                 }
             }
 
-            $version_module = !empty($server_module_info['version']) ? $server_module_info['version'] : $version;
+            $version_module = ($version && $version !== 'latest') ? $version
+                : (!empty($server_module_info['version']) ? $server_module_info['version'] : 'latest');
 
             // 4. Скачивание
             $updateService = $this->getServiceFactory()->getUpdateService();
@@ -584,6 +588,7 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
 
             // 5. Установка
             $installService = $this->getServiceFactory()->getInstallService();
+            $server_module_info['_downloaded_version'] = $download_result['version'] ?? '';
             $install_result = $installService->installModule($file_path, $module_code, $server_module_info);
 
             // Удаляем временный файл сразу после попытки установки
@@ -601,7 +606,6 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
             LoggerService::write("GDT Install Modules: Successfully installed module {$module_code}");
 
             $json['success'] = sprintf($this->trans('text_install_success'), $module_code);
-
         } catch (Exception $e) {
             $json['error'] = $e->getMessage();
             LoggerService::write("GDT Install Modules error: " . $e->getMessage());

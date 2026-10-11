@@ -7,6 +7,7 @@
 
 // Підключення автозавантажувача Composer
 require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../upload/system/library/gbitstudio/modules/services/moduleregistryservice.php';
 
 // Встановлення констант OpenCart, якщо вони ще не визначені
 if (!defined('DIR_APPLICATION')) {

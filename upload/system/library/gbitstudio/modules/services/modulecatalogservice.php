@@ -6,128 +6,137 @@ namespace Gbitstudio\Modules\Services;
  * Сервіс для роботи з каталогом модулів
  * Відповідає за отримання модулів з зовнішнього сервера та їх встановлення
  */
-class ModuleCatalogService {
+class ModuleCatalogService
+{
     private $config;
-    
-    public function __construct($config) {
+
+    public function __construct($config)
+    {
         $this->config = $config;
     }
-    
+
     /**
      * Отримує рекомендовані модулі з сервера
-     * 
+     *
      * @return array
      */
-    public function getFeaturedModules() {
+    public function getFeaturedModules()
+    {
         return $this->getModulesFromServer(['featured' => 1]);
     }
-    
+
     /**
      * Отримує популярні модулі з сервера
-     * 
+     *
      * @return array
      */
-    public function getPopularModules() {
+    public function getPopularModules()
+    {
         return $this->getModulesFromServer(['popular' => 1]);
     }
-    
+
     /**
      * Отримує найновіші модулі з сервера
-     * 
+     *
      * @return array
      */
-    public function getNewestModules() {
+    public function getNewestModules()
+    {
         return $this->getModulesFromServer(['newest' => 1]);
     }
-    
+
     /**
      * Шукає модулі за параметрами
-     * 
+     *
      * @param string $query
      * @param string $category
      * @param string $sort
      * @param string $price
      * @return array
      */
-    public function searchModules($query, $category = '', $sort = 'relevance', $price = '') {
+    public function searchModules($query, $category = '', $sort = 'relevance', $price = '')
+    {
         if (empty($query)) {
             throw new \Exception('Search query cannot be empty');
         }
-        
+
         $params = [
             'search' => $query,
             'category' => $category,
             'sort' => $sort,
             'price' => $price
         ];
-        
+
         return $this->getModulesFromServer($params);
     }
-    
+
     /**
      * Отримує всі модулі з магазину
-     * 
+     *
      * @param int $page
      * @param int $limit
      * @return array
      */
-    public function getStoreModules($page = 1, $limit = 20) {
+    public function getStoreModules($page = 1, $limit = 20)
+    {
         $server_url = $this->getServerUrl();
         if (empty($server_url)) {
             throw new \Exception('Server URL not configured');
         }
-        
+
         $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
-        
-        $url = rtrim($server_url, '/') . '/api/v1/modules/list';
-        
+
+        $url = (new ServerEndpointService($this->config))->build($server_url, 'list');
+
         $post_data = [
             'page' => $page,
             'limit' => $limit
         ];
-        
+
         $response = $this->makeApiRequest($url, $post_data, $api_key);
-        
+
         if (isset($response['success']) && $response['success']) {
             return $response['modules'];
         } else {
             throw new \Exception('Error getting modules: ' . (isset($response['error']) ? $response['error'] : (isset($response['message']) ? $response['message'] : 'Unknown error')));
         }
     }
-    
+
     /**
      * Отримує модулі з сервера за параметрами
-     * 
+     *
      * @param array $params
      * @return array
      */
-    private function getModulesFromServer($params = []) {
+    private function getModulesFromServer($params = [])
+    {
         $server_url = $this->getServerUrl();
         if (empty($server_url)) {
             throw new \Exception('Server URL not configured');
         }
-        
+
         $api_key = $this->config->get('module_gdt_updater_api_key') ?: '';
-        
-        $url = rtrim($server_url, '/') . '/api/v1/modules/list';
-        
+
+        $url = (new ServerEndpointService($this->config))->build($server_url, 'list');
+
         $response = $this->makeApiRequest($url, $params, $api_key);
-        
+
         if (isset($response['success']) && $response['success']) {
             return $response['modules'];
         } else {
             throw new \Exception('Error getting modules: ' . (isset($response['error']) ? $response['error'] : (isset($response['message']) ? $response['message'] : 'Unknown error')));
         }
     }
-    
+
     /**
      * Помічає встановлені модулі в списку
-     * 
+     *
      * @param array $modules
      * @param array $installed_modules
      * @return array
      */
-    public function markInstalledModules($modules, $installed_modules) {
+    public function markInstalledModules($modules, $installed_modules)
+    {
         $installed_map = [];
         foreach ($installed_modules as $installed) {
             if (isset($installed['code'])) {
@@ -137,12 +146,12 @@ class ModuleCatalogService {
                 ];
             }
         }
-        
+
         foreach ($modules as &$module) {
             if (isset($module['code']) && isset($installed_map[$module['code']])) {
                 $module['installed'] = true;
                 $module['installed_version'] = $installed_map[$module['code']]['version'];
-                
+
                 if (isset($module['version'])) {
                     $server_version = ltrim($module['version'], 'v');
                     $installed_version = ltrim($installed_map[$module['code']]['version'], 'v');
@@ -156,20 +165,21 @@ class ModuleCatalogService {
                 $module['update_available'] = false;
             }
         }
-        
+
         return $modules;
     }
-    
+
     /**
      * Виконує API запит
-     * 
+     *
      * @param string $url
      * @param array $post_data
      * @return array
      */
-    private function makeApiRequest($url, $post_data = [], $api_key = '') {
+    private function makeApiRequest($url, $post_data = [], $api_key = '')
+    {
         $is_logging = $this->config->get('module_gdt_updater_api_log');
-        
+
         if ($is_logging) {
             $masked_key = !empty($api_key) ? substr($api_key, 0, 4) . '...' . substr($api_key, -4) : 'none';
             LoggerService::debug("API Request: POST " . $url, 'ModuleCatalog');
@@ -178,17 +188,17 @@ class ModuleCatalogService {
         }
 
         $ch = curl_init();
-        
+
         $headers = [
             'Content-Type: application/x-www-form-urlencoded',
             'Accept: application/json',
             'User-Agent: GDT-ModuleManager/1.0'
         ];
-        
+
         if (!empty($api_key)) {
             $headers[] = 'X-API-Key: ' . $api_key;
         }
-        
+
         curl_setopt_array($ch, [
             CURLOPT_URL => $url,
             CURLOPT_RETURNTRANSFER => true,
@@ -198,53 +208,54 @@ class ModuleCatalogService {
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_HTTPHEADER => $headers
         ]);
-        
+
         if (true) { // Always use POST for the new list API
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
         }
-        
+
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $error = curl_error($ch);
-        
+
         if ($is_logging) {
             LoggerService::debug("API Response Code: " . $http_code, 'ModuleCatalog');
             LoggerService::debug("API Response Body: " . (strlen($response) > 1000 ? substr($response, 0, 1000) . '...' : (string)$response), 'ModuleCatalog');
         }
-        
+
         curl_close($ch);
-        
+
         if ($error) {
             throw new \Exception('cURL error: ' . $error);
         }
-        
+
         if ($http_code !== 200) {
             throw new \Exception('HTTP error: ' . $http_code);
         }
-        
+
         $decoded = json_decode($response, true);
         if ($decoded === null) {
             throw new \Exception('Invalid JSON response from server');
         }
-        
+
         return $decoded;
     }
-    
+
     /**
      * Отримує URL сервера
-     * 
+     *
      * @return string
      */
-    private function getServerUrl() {
+    private function getServerUrl()
+    {
         $server_url = $this->config->get('module_gdt_updater_server');
-        
+
         if (empty($server_url)) {
             if (defined('HTTP_SERVER')) {
                 return HTTP_SERVER . 'ocm_gdt_update_server';
             }
         }
-        
+
         return $server_url ?: '';
     }
 }
