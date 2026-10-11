@@ -27,7 +27,7 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
     public function index()
     {
         // Перенаправляем на страницу магазина модулей по умолчанию
-        response()->redirect(route(self::PATH_INSTALL . '/store'));
+        $this->redirect($this->buildUrl(self::PATH_INSTALL . '/store'));
     }
 
     private function layout()
@@ -44,21 +44,23 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
      */
     public function store()
     {
-        $this->document->setTitle(__('heading_title') . ' - ' . __(self::PATH_INSTALL . '.text_store'));
+        $this->load->language(self::PATH_INSTALL);
+
+        $this->document->setTitle($this->trans('heading_title') . ' - ' . $this->trans(self::PATH_INSTALL . '.text_store'));
 
         $data = $this->getCommonData();
         $data['current_page'] = 'store';
-        $data['page_title'] = __(self::PATH_INSTALL . '.text_store');
-        $data['page_description'] = __(self::PATH_INSTALL . '.text_store_desc');
+        $data['page_title'] = $this->trans(self::PATH_INSTALL . '.text_store');
+        $data['page_description'] = $this->trans(self::PATH_INSTALL . '.text_store_desc');
 
         // AJAX URLs для этой страницы
-        $data['get_modules_url'] = html_entity_decode(route(self::PATH_INSTALL . '/getStoreModules'));
-        $data['search_modules_url'] = html_entity_decode(route(self::PATH_INSTALL . '/searchStoreModules'));
-        $data['install_module_url'] = html_entity_decode(route(self::PATH_INSTALL . '/installModule'));
+        $data['get_modules_url'] = html_entity_decode($this->buildUrl(self::PATH_INSTALL . '/getStoreModules'));
+        $data['search_modules_url'] = html_entity_decode($this->buildUrl(self::PATH_INSTALL . '/searchStoreModules'));
+        $data['install_module_url'] = html_entity_decode($this->buildUrl(self::PATH_INSTALL . '/installModule'));
 
         $data = array_merge($data, $this->layout());
 
-        response(view(self::PATH_INSTALL . '', $data));
+        $this->render(self::PATH_INSTALL, $data);
     }
 
     /**
@@ -66,22 +68,22 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
      */
     public function featured()
     {
-        $this->load->language(self::PATH_INSTALL . '');
+        $this->load->language(self::PATH_INSTALL);
 
-        $this->document->setTitle(__('heading_title') . ' - ' . __(self::PATH_INSTALL . '.text_featured'));
+        $this->document->setTitle($this->trans('heading_title') . ' - ' . $this->trans(self::PATH_INSTALL . '.text_featured'));
 
         $data = $this->getCommonData();
         $data['current_page'] = 'featured';
-        $data['page_title'] = __(self::PATH_INSTALL . '.text_featured');
-        $data['page_description'] = __(self::PATH_INSTALL . '.text_featured_desc');
+        $data['page_title'] = $this->trans(self::PATH_INSTALL . '.text_featured');
+        $data['page_description'] = $this->trans(self::PATH_INSTALL . '.text_featured_desc');
 
         // AJAX URLs для этой страницы
-        $data['get_modules_url'] = html_entity_decode(route(self::PATH_INSTALL . '/getFeaturedModules'));
-        $data['install_module_url'] = html_entity_decode(route(self::PATH_INSTALL . '/installModule'));
+        $data['get_modules_url'] = html_entity_decode($this->buildUrl(self::PATH_INSTALL . '/getFeaturedModules'));
+        $data['install_module_url'] = html_entity_decode($this->buildUrl(self::PATH_INSTALL . '/installModule'));
 
         $data = array_merge($data, $this->layout());
 
-        response(view(self::PATH_INSTALL . '', $data));
+        $this->render(self::PATH_INSTALL, $data);
     }
 
     /**
@@ -89,22 +91,22 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
      */
     public function popular()
     {
-        $this->load->language(self::PATH_INSTALL . '');
+        $this->load->language(self::PATH_INSTALL);
 
-        $this->document->setTitle(__('heading_title') . ' - ' . __(self::PATH_INSTALL . '.text_popular'));
+        $this->document->setTitle($this->trans('heading_title') . ' - ' . $this->trans(self::PATH_INSTALL . '.text_popular'));
 
         $data = $this->getCommonData();
         $data['current_page'] = 'popular';
-        $data['page_title'] = __(self::PATH_INSTALL . '.text_popular');
-        $data['page_description'] = __(self::PATH_INSTALL . '.text_popular_desc');
+        $data['page_title'] = $this->trans(self::PATH_INSTALL . '.text_popular');
+        $data['page_description'] = $this->trans(self::PATH_INSTALL . '.text_popular_desc');
 
         // AJAX URLs для этой страницы
-        $data['get_modules_url'] = html_entity_decode(route(self::PATH_INSTALL . '/getPopularModules'));
-        $data['install_module_url'] = html_entity_decode(route(self::PATH_INSTALL . '/installModule'));
+        $data['get_modules_url'] = html_entity_decode($this->buildUrl(self::PATH_INSTALL . '/getPopularModules'));
+        $data['install_module_url'] = html_entity_decode($this->buildUrl(self::PATH_INSTALL . '/installModule'));
 
         $data = array_merge($data, $this->layout());
 
-        response(view(self::PATH_INSTALL . '', $data));
+        $this->render(self::PATH_INSTALL, $data);
     }
 
     /**
@@ -112,22 +114,22 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
      */
     public function newest()
     {
-        $this->load->language(self::PATH_INSTALL . '');
+        $this->load->language(self::PATH_INSTALL);
 
-        $this->document->setTitle(__('heading_title') . ' - ' . __(self::PATH_INSTALL . '.text_newest'));
+        $this->document->setTitle($this->trans('heading_title') . ' - ' . $this->trans(self::PATH_INSTALL . '.text_newest'));
 
         $data = $this->getCommonData();
         $data['current_page'] = 'newest';
-        $data['page_title'] = __(self::PATH_INSTALL . '.text_newest');
-        $data['page_description'] = __(self::PATH_INSTALL . '.text_newest_desc');
+        $data['page_title'] = $this->trans(self::PATH_INSTALL . '.text_newest');
+        $data['page_description'] = $this->trans(self::PATH_INSTALL . '.text_newest_desc');
 
         // AJAX URLs для этой страницы
-        $data['get_modules_url'] = html_entity_decode(route(self::PATH_INSTALL . '/getNewestModules'));
-        $data['install_module_url'] = html_entity_decode(route(self::PATH_INSTALL . '/installModule'));
+        $data['get_modules_url'] = html_entity_decode($this->buildUrl(self::PATH_INSTALL . '/getNewestModules'));
+        $data['install_module_url'] = html_entity_decode($this->buildUrl(self::PATH_INSTALL . '/installModule'));
 
         $data = array_merge($data, $this->layout());
 
-        response(view(self::PATH_INSTALL . '', $data));
+        $this->render(self::PATH_INSTALL, $data);
     }
 
     /**
@@ -135,22 +137,22 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
      */
     public function search()
     {
-        $this->load->language(self::PATH_INSTALL . '');
+        $this->load->language(self::PATH_INSTALL);
 
-        $this->document->setTitle(__('heading_title') . ' - ' . __(self::PATH_INSTALL . '.text_search'));
+        $this->document->setTitle($this->trans('heading_title') . ' - ' . $this->trans(self::PATH_INSTALL . '.text_search'));
 
         $data = $this->getCommonData();
         $data['current_page'] = 'search';
-        $data['page_title'] = __(self::PATH_INSTALL . '.text_search');
-        $data['page_description'] = __(self::PATH_INSTALL . '.text_search_desc');
+        $data['page_title'] = $this->trans(self::PATH_INSTALL . '.text_search');
+        $data['page_description'] = $this->trans(self::PATH_INSTALL . '.text_search_desc');
 
         // AJAX URLs для этой страницы
-        $data['search_modules_url'] = html_entity_decode(route(self::PATH_INSTALL . '/searchModules'));
-        $data['install_module_url'] = html_entity_decode(route(self::PATH_INSTALL . '/installModule'));
+        $data['search_modules_url'] = html_entity_decode($this->buildUrl(self::PATH_INSTALL . '/searchModules'));
+        $data['install_module_url'] = html_entity_decode($this->buildUrl(self::PATH_INSTALL . '/installModule'));
 
         $data = array_merge($data, $this->layout());
 
-        response(view(self::PATH_INSTALL . '', $data));
+        $this->render(self::PATH_INSTALL, $data);
     }
 
     /**
@@ -158,42 +160,44 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
      */
     private function getCommonData()
     {
+        $this->load->language(self::PATH_INSTALL);
+
         $data = array();
 
         $data['breadcrumbs'] = array();
 
         $data['breadcrumbs'][] = array(
-            'text' => __('text_home'),
-            'href' => route('common/dashboard')
+            'text' => $this->trans('text_home'),
+            'href' => $this->buildUrl('common/dashboard')
         );
 
         $data['breadcrumbs'][] = array(
-            'text' => __('text_extension'),
-            'href' => route('marketplace/extension', ['type' => 'module'])
+            'text' => $this->trans('text_extension'),
+            'href' => $this->buildUrl('marketplace/extension', ['type' => 'module'])
         );
 
         $data['breadcrumbs'][] = array(
             'text' => 'GDT Module Updater',
-            'href' => route(self::PATH_UPDATER . '')
+            'href' => $this->buildUrl(self::PATH_UPDATER)
         );
 
         $data['breadcrumbs'][] = array(
-            'text' => __('heading_title'),
-            'href' => route(self::PATH_INSTALL . '/store')
+            'text' => $this->trans('heading_title'),
+            'href' => $this->buildUrl(self::PATH_INSTALL . '/store')
         );
 
         // URL для возврата
-        $data['back'] = route(self::PATH_UPDATER . '');
+        $data['back'] = $this->buildUrl(self::PATH_UPDATER);
 
         // Навигационные ссылки между страницами
-        $data['store_url'] = route(self::PATH_INSTALL . '/store');
-        $data['featured_url'] = route(self::PATH_INSTALL . '/featured');
-        $data['popular_url'] = route(self::PATH_INSTALL . '/popular');
-        $data['newest_url'] = route(self::PATH_INSTALL . '/newest');
-        $data['search_url'] = route(self::PATH_INSTALL . '/search');
-        $data['installed_url'] = route(self::PATH_INSTALL . '/installed');
+        $data['store_url'] = $this->buildUrl(self::PATH_INSTALL . '/store');
+        $data['featured_url'] = $this->buildUrl(self::PATH_INSTALL . '/featured');
+        $data['popular_url'] = $this->buildUrl(self::PATH_INSTALL . '/popular');
+        $data['newest_url'] = $this->buildUrl(self::PATH_INSTALL . '/newest');
+        $data['search_url'] = $this->buildUrl(self::PATH_INSTALL . '/search');
+        $data['installed_url'] = $this->buildUrl(self::PATH_INSTALL . '/installed');
 
-        $data['user_token'] = $this->session->data['user_token'];
+        $data['user_token'] = $this->session->data['user_token'] ?? '';
 
         return $data;
     }
@@ -203,22 +207,24 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
      */
     public function installed()
     {
-        $this->document->setTitle(__(self::PATH_UPDATER . '.heading_title'));
+        $this->load->language(self::PATH_UPDATER);
+
+        $this->document->setTitle($this->trans(self::PATH_UPDATER . '.heading_title'));
 
         $data = $this->getCommonData();
         $data['current_page'] = 'installed';
         $data['page_title'] = 'Установленные модули';
 
         // Для установленных модулей кнопка «Назад» ведёт в marketplace
-        $data['back'] = route('marketplace/extension', ['type' => 'module']);
+        $data['back'] = $this->buildUrl('marketplace/extension', ['type' => 'module']);
 
         // AJAX URL-адреса (делегируем к gdt_updater)
-        $data['settings_url'] = html_entity_decode(route(self::PATH_UPDATER . '/settings'));
-        $data['save_settings_url'] = html_entity_decode(route(self::PATH_UPDATER . '/saveSettings'));
-        $data['check_updates_url'] = html_entity_decode(route(self::PATH_UPDATER . '/check'));
-        $data['toggle_auto_update_url'] = html_entity_decode(route(self::PATH_UPDATER . '/toggleAutoUpdate'));
-        $data['delete_multiple_url'] = html_entity_decode(route(self::PATH_UPDATER . '/deleteMultiple'));
-        $data['install_module_url'] = html_entity_decode(route(self::PATH_INSTALL . '/installModule'));
+        $data['settings_url'] = html_entity_decode($this->buildUrl(self::PATH_UPDATER . '/settings'));
+        $data['save_settings_url'] = html_entity_decode($this->buildUrl(self::PATH_UPDATER . '/saveSettings'));
+        $data['check_updates_url'] = html_entity_decode($this->buildUrl(self::PATH_UPDATER . '/check'));
+        $data['toggle_auto_update_url'] = html_entity_decode($this->buildUrl(self::PATH_UPDATER . '/toggleAutoUpdate'));
+        $data['delete_multiple_url'] = html_entity_decode($this->buildUrl(self::PATH_UPDATER . '/deleteMultiple'));
+        $data['install_module_url'] = html_entity_decode($this->buildUrl(self::PATH_INSTALL . '/installModule'));
 
         // Данные установленных модулей с проверкой обновлений
         try {
@@ -230,7 +236,7 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
 
         $data = array_merge($data, $this->layout());
 
-        response(view(self::PATH_INSTALL . '', $data));
+        $this->render(self::PATH_INSTALL, $data);
     }
 
     /**
@@ -246,8 +252,8 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
         }
 
         $modules = array();
-        $server_url = config('module_gdt_updater_server');
-        $api_key = config('module_gdt_updater_api_key') ?: '';
+        $server_url = $this->getConfig('module_gdt_updater_server');
+        $api_key = $this->getConfig('module_gdt_updater_api_key') ?: '';
 
         foreach ($installed_modules as $module) {
             $module_data = array(
@@ -267,10 +273,10 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
 
             // Ссылка на настройки модуля
             if (!empty($module['controller'])) {
-                $module_data['settings_url'] = $this->url->link($module['controller'], 'user_token=' . $this->session->data['user_token'], true);
+                $module_data['settings_url'] = $this->buildUrl($module['controller']);
             } elseif (!empty($module['code'])) {
-                $module_data['settings_url'] = $this->url->link('extension/module/' . $module['code'], 'user_token=' . $this->session->data['user_token'], true);
-                $module_data['delete_url'] = $this->url->link(self::PATH_UPDATER . '/delete', 'user_token=' . $this->session->data['user_token'] . '&code=' . $module['code'], true);
+                $module_data['settings_url'] = $this->buildUrl('extension/module/' . $module['code']);
+                $module_data['delete_url'] = $this->buildUrl(self::PATH_UPDATER . '/delete', ['code' => $module['code']]);
             }
 
             // Проверка обновлений
@@ -279,12 +285,12 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
                 if ($update_info && !isset($update_info['error'])) {
                     $module_data['has_update'] = true;
                     $module_data['new_version'] = $update_info['version'];
-                    $module_data['update_url'] = $this->url->link(self::PATH_UPDATER . '/update', 'user_token=' . $this->session->data['user_token'] . '&code=' . $module['code'], true);
+                    $module_data['update_url'] = $this->buildUrl(self::PATH_UPDATER . '/update', ['code' => $module['code']]);
                 }
             }
 
             // Настройка автообновления
-            $auto_modules = config('module_gdt_updater_auto_modules') ?: array();
+            $auto_modules = $this->getConfig('module_gdt_updater_auto_modules') ?: array();
             $module_data['auto_update'] = in_array($module['code'], $auto_modules);
 
             $modules[] = $module_data;
@@ -316,7 +322,7 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
             );
         }
 
-        response()->json($json);
+        $this->jsonResponse($json);
     }
 
     /**
@@ -342,7 +348,7 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
             );
         }
 
-        response()->json($json);
+        $this->jsonResponse($json);
     }
 
     /**
@@ -368,7 +374,7 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
             );
         }
 
-        response()->json($json);
+        $this->jsonResponse($json);
     }
 
     /**
@@ -376,14 +382,16 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
      */
     public function searchModules()
     {
-        $query = request()->post('query', '');
-        $category = request()->post('category', '');
-        $sort = request()->post('sort', 'relevance');
-        $price = request()->post('price', '');
+        $this->load->language(self::PATH_INSTALL);
+
+        $query = $this->getPostData('query', '');
+        $category = $this->getPostData('category', '');
+        $sort = $this->getPostData('sort', 'relevance');
+        $price = $this->getPostData('price', '');
 
         if (empty($query)) {
             $json = array(
-                'error' => __('error_query_empty')
+                'error' => $this->trans('error_query_empty')
             );
         } else {
             try {
@@ -405,7 +413,7 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
             }
         }
 
-        response()->json($json);
+        $this->jsonResponse($json);
     }
 
     /**
@@ -431,7 +439,7 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
             );
         }
 
-        response()->json($json);
+        $this->jsonResponse($json);
     }
 
     /**
@@ -439,13 +447,15 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
      */
     public function searchStoreModules()
     {
-        $query = request()->post('query', '');
-        $category = request()->post('category', '');
-        $featured = request()->post('featured', 0);
+        $this->load->language(self::PATH_INSTALL);
+
+        $query = $this->getPostData('query', '');
+        $category = $this->getPostData('category', '');
+        $featured = $this->getPostData('featured', 0);
 
         if (empty($query)) {
             $json = array(
-                'error' => __('error_query_empty')
+                'error' => $this->trans('error_query_empty')
             );
         } else {
             try {
@@ -467,7 +477,7 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
             }
         }
 
-        response()->json($json);
+        $this->jsonResponse($json);
     }
 
     /**
@@ -475,7 +485,7 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
      */
     private function getServerUrl(): string
     {
-        return config('module_gdt_updater_server')
+        return $this->getConfig('module_gdt_updater_server')
             ?: getenv('GDT_UPDATE_SERVER')
             ?: (defined('HTTP_SERVER') ? HTTP_SERVER . 'ocm_gdt_update/server' : '');
     }
@@ -485,10 +495,14 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
      */
     private function parseServerModuleInfo($info): array
     {
-        if (is_array($info))
+        if (is_array($info)) {
             return $info;
+        }
         if (is_string($info)) {
-            $decoded = json_decode($info, true);
+            $decoded = json_decode(html_entity_decode($info, ENT_QUOTES, 'UTF-8'), true);
+            if (!is_array($decoded)) {
+                $decoded = json_decode($info, true);
+            }
             return is_array($decoded) ? $decoded : [];
         }
         return [];
@@ -499,47 +513,71 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
      */
     public function installModule()
     {
-        $this->load->language(self::PATH_INSTALL . '');
+        $this->load->language(self::PATH_INSTALL);
 
         $json = array();
 
-        if (!request()->isMethod('post')) {
-            $json['error'] = __('error_method_invalid');
-            response()->json($json);
+        if (!$this->isPost()) {
+            $this->jsonResponse(['error' => $this->trans('error_method_invalid')]);
             return;
         }
 
-        $module_code = request()->post('module_code');
+        $module_code = $this->getPostData('module_code');
         if (empty($module_code)) {
-            return response()->json(['error' => __('error_code_not_found')]);
+            $this->jsonResponse(['error' => $this->trans('error_code_not_found')]);
+            return;
         }
 
         // 2. Подготовка данных модуля
-        $server_module_info = $this->parseServerModuleInfo(request()->post('server_module_info'));
+        $server_module_info = $this->parseServerModuleInfo($this->getPostData('server_module_info'));
         $server_module_info['code'] = $server_module_info['code'] ?? $module_code;
 
         if (empty($server_module_info['code'])) {
             $server_module_info['code'] = $module_code;
         }
 
-        $version = request()->post('version', 'latest');
-        $version_module = !empty($server_module_info['version']) ? $server_module_info['version'] : $version;
+        $version = $this->getPostData('version', 'latest');
+        if (empty($server_module_info['version']) && !empty($version) && $version !== 'latest') {
+            $server_module_info['version'] = $version;
+        }
 
         try {
             // 3. Получение URL сервера
             $server_url = $this->getServerUrl();
             if (empty($server_url)) {
-                throw new Exception(__('error_server_not_configured'));
+                throw new Exception($this->trans('error_server_not_configured'));
             }
 
-            $api_key = config('module_gdt_updater_api_key') ?: '';
+            $api_key = $this->getConfig('module_gdt_updater_api_key') ?: '';
+
+            // Если метаданные с сервера неполные (нет версии или нет названия), запрашиваем у сервера напрямую
+            if (empty($server_module_info['version']) || $server_module_info['version'] === '0.0.0' || empty($server_module_info['name'])) {
+                try {
+                    $updateService = $this->getServiceFactory()->getUpdateService();
+                    $check_info = $updateService->checkModuleUpdate($server_url, ['code' => $module_code, 'version' => '0.0.0'], $api_key);
+                    if ($check_info && is_array($check_info) && !isset($check_info['error'])) {
+                        foreach ($check_info as $k => $v) {
+                            if (empty($server_module_info[$k]) && $v !== null && $v !== '') {
+                                $server_module_info[$k] = $v;
+                            }
+                        }
+                        if (!empty($check_info['version'])) {
+                            $server_module_info['version'] = $check_info['version'];
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    LoggerService::warning("Could not pre-fetch module info for {$module_code}: " . $e->getMessage(), 'InstallModules');
+                }
+            }
+
+            $version_module = !empty($server_module_info['version']) ? $server_module_info['version'] : $version;
 
             // 4. Скачивание
             $updateService = $this->getServiceFactory()->getUpdateService();
             $download_result = $updateService->downloadModule($server_url, $module_code, $version_module, $api_key);
 
             if (empty($download_result['success'])) {
-                throw new Exception(sprintf(__('error_download_failed'), ($download_result['error'] ?? 'Unknown error')));
+                throw new Exception(sprintf($this->trans('error_download_failed'), ($download_result['error'] ?? 'Unknown error')));
             }
 
             $file_path = $download_result['file_path'];
@@ -554,7 +592,7 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
             }
 
             if ($install_result !== true) {
-                $error_msg = is_string($install_result) ? $install_result : __('error_install_failed');
+                $error_msg = is_string($install_result) ? $install_result : $this->trans('error_install_failed');
                 throw new Exception($error_msg);
             }
 
@@ -562,14 +600,14 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
             $this->cache->delete('*');
             LoggerService::write("GDT Install Modules: Successfully installed module {$module_code}");
 
-            $json['success'] = sprintf(__('text_install_success'), $module_code);
+            $json['success'] = sprintf($this->trans('text_install_success'), $module_code);
 
         } catch (Exception $e) {
             $json['error'] = $e->getMessage();
             LoggerService::write("GDT Install Modules error: " . $e->getMessage());
         }
 
-        response()->json($json);
+        $this->jsonResponse($json);
         return;
     }
 }

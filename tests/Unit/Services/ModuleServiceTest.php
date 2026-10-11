@@ -12,6 +12,7 @@ use Mockery;
 class ModuleServiceTest extends BaseTestCase
 {
     private $moduleService;
+    private $registry;
 
     /**
      * Налаштування перед кожним тестом
@@ -20,7 +21,8 @@ class ModuleServiceTest extends BaseTestCase
     {
         parent::setUp();
         
-        $this->moduleService = new ModuleService();
+        $this->registry = $this->createRegistryMock();
+        $this->moduleService = new ModuleService($this->registry);
     }
 
     /**
@@ -28,7 +30,7 @@ class ModuleServiceTest extends BaseTestCase
      */
     public function testConstructor()
     {
-        $service = new ModuleService();
+        $service = new ModuleService($this->registry);
         $this->assertInstanceOf(ModuleService::class, $service);
     }
 
@@ -57,7 +59,7 @@ class ModuleServiceTest extends BaseTestCase
      */
     public function testWorksWithoutLog()
     {
-        $service = new ModuleService();
+        $service = new ModuleService($this->registry);
         
         $result = $service->getInstalledModules();
         

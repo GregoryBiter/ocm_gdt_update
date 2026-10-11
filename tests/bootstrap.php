@@ -27,6 +27,37 @@ if (!defined('DIR_STORAGE')) {
 if (!defined('DIR_UPLOAD')) {
     define('DIR_UPLOAD', sys_get_temp_dir() . '/opencart/storage/upload/');
 }
+if (!defined('DB_PREFIX')) {
+    define('DB_PREFIX', 'oc_');
+}
+
+if (!class_exists('Log')) {
+    class Log {
+        public function __construct($filename = '') {}
+        public function write($message) {}
+    }
+}
+
+if (!class_exists('Loader')) {
+    class Loader {
+        public function controller($route, $data = []) {}
+        public function model($route) {}
+        public function view($route, $data = []) {}
+        public function language($route) {}
+    }
+}
+
+if (!class_exists('Controller')) {
+    abstract class Controller {
+        protected $registry;
+        public function __construct($registry = null) {
+            $this->registry = $registry;
+        }
+        public function __get($key) {
+            return $this->registry ? $this->registry->get($key) : null;
+        }
+    }
+}
 
 // Створення необхідних директорій для тестування
 $directories = [
@@ -43,6 +74,14 @@ foreach ($directories as $dir) {
         mkdir($dir, 0777, true);
     }
 }
+
+@mkdir(DIR_SYSTEM . 'library', 0777, true);
+if (!file_exists(DIR_SYSTEM . 'library/gbitstudio')) {
+    @symlink(realpath(__DIR__ . '/../upload/system/library/gbitstudio'), DIR_SYSTEM . 'library/gbitstudio');
+}
+
+require_once __DIR__ . '/../upload/system/library/gbitstudio/modules/controllers/GDTBaseController.php';
+require_once __DIR__ . '/../upload/admin/controller/extension/module/gdt_install_modules.php';
 
 // Завантаження Mockery для підтримки tearDown
 if (class_exists('Mockery')) {

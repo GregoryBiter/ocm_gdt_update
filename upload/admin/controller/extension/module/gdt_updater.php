@@ -24,7 +24,6 @@ use Gbitstudio\Modules\Controllers\GDTBaseController;
  */
 class ControllerExtensionModuleGdtUpdater extends GDTBaseController
 {
-
     private const MODULE_CODE = 'gdt_updater';
     private const MODULE_PATH = 'extension/module/gdt_updater';
 
@@ -46,7 +45,7 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
 
     public function index()
     {
-        response()->redirect(route('extension/module/gdt_install_modules/installed'));
+        $this->redirect($this->buildUrl('extension/module/gdt_install_modules/installed'));
     }
 
     /**
@@ -55,15 +54,14 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
     public function settings()
     {
         $json = array(
-            'module_gdt_updater_server' => config('module_gdt_updater_server'),
-            'module_gdt_updater_api_key' => config('module_gdt_updater_api_key'),
-            'module_gdt_updater_status' => config('module_gdt_updater_status'),
-            'module_gdt_updater_api_log' => config('module_gdt_updater_api_log'),
-            'module_gdt_updater_auto_modules' => config('module_gdt_updater_auto_modules', [])
+            'module_gdt_updater_server' => $this->getConfig('module_gdt_updater_server'),
+            'module_gdt_updater_api_key' => $this->getConfig('module_gdt_updater_api_key'),
+            'module_gdt_updater_status' => $this->getConfig('module_gdt_updater_status'),
+            'module_gdt_updater_api_log' => $this->getConfig('module_gdt_updater_api_log'),
+            'module_gdt_updater_auto_modules' => $this->getConfig('module_gdt_updater_auto_modules', [])
         );
 
-        // response()->json($json);
-        response()->json($json);
+        $this->jsonResponse($json);
     }
 
     /**
@@ -71,16 +69,15 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
      */
     public function saveSettings()
     {
-
         try {
             $this->validatePermission();
 
-            if (request()->isMethod('post') && $this->validate()) {
-                model('setting/setting')->editSetting('module_gdt_updater', $this->request->post);
-                response()->json(['success' => __(self::MODULE_PATH . '.text_success')]);
+            if ($this->isPost() && $this->validate()) {
+                $this->getModel('setting/setting')->editSetting('module_gdt_updater', $this->request->post);
+                $this->jsonResponse(['success' => $this->trans(self::MODULE_PATH . '.text_success')]);
             } else {
-                $error = isset($this->error['warning']) ? $this->error['warning'] : __(self::MODULE_PATH . '.text_validation_failed');
-                response()->json(['error' => $error]);
+                $error = isset($this->error['warning']) ? $this->error['warning'] : $this->trans(self::MODULE_PATH . '.text_validation_failed');
+                $this->jsonResponse(['error' => $error]);
             }
         } catch (Exception $e) {
             $this->handleException($e);
@@ -98,19 +95,19 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
         $installed_modules = $this->getServiceFactory()->getModuleService()->getInstalledModules();
 
         if (empty($installed_modules)) {
-            $json['error'] = __(self::MODULE_PATH . '.error_no_modules');
-            response()->json($json);
+            $json['error'] = $this->trans(self::MODULE_PATH . '.error_no_modules');
+            $this->jsonResponse($json);
             return;
         }
 
         $json['modules'] = array();
 
         // Получаем URL сервера обновлений
-        $server_url = config('module_gdt_updater_server');
+        $server_url = $this->getConfig('module_gdt_updater_server');
         if (empty($server_url)) {
             $server_url = HTTP_SERVER . 'ocm_gdt_update/server';
         }
-        $api_key = config('module_gdt_updater_api_key') ?: '';
+        $api_key = $this->getConfig('module_gdt_updater_api_key') ?: '';
 
         // Batch check updates with caching
         $batch_updates = $this->getServiceFactory()->getUpdateService()->checkBatchUpdates($server_url, $installed_modules, $api_key, false);
@@ -133,23 +130,23 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
             if ($update_info && is_array($update_info) && isset($update_info['status']) && $update_info['status'] === 'update_available') {
                 $module_data['has_update'] = true;
                 $module_data['new_version'] = $update_info['version'];
-                $module_data['update_url'] = route(self::MODULE_PATH . '/update', ['code' => $module['code']], true);
+                $module_data['update_url'] = $this->buildUrl(self::MODULE_PATH . '/update', ['code' => $module['code']]);
             }
 
             $json['modules'][] = $module_data;
         }
 
-        response()->json($json);
+        $this->jsonResponse($json);
     }
 
     public function check()
     {
-        $this->load->language(self::MODULE_PATH . '');
+        $this->load->language(self::MODULE_PATH);
 
         $json = array();
 
         // Получаем URL сервера обновлений
-        $server_url = config('module_gdt_updater_server');
+        $server_url = $this->getConfig('module_gdt_updater_server');
 
         // Проверяем, не пустой ли URL и устанавливаем значение по умолчанию, если нужно
         if (empty($server_url)) {
@@ -159,19 +156,19 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
             } elseif (defined('HTTP_SERVER')) {
                 $server_url = HTTP_SERVER . 'ocm_gdt_update/server';
             } else {
-                throw new Exception(__('error_server'));
+                throw new Exception($this->trans('error_server'));
             }
         }
 
         if (empty($server_url)) {
-            $json['error'] = __('error_server');
+            $json['error'] = $this->trans('error_server');
         } else {
             // Получаем список установленных модулей
             $modules = $this->getServiceFactory()->getModuleService()->getInstalledModules();
 
             if (!empty($modules)) {
                 $json['modules'] = array();
-                $api_key = config('module_gdt_updater_api_key') ?: '';
+                $api_key = $this->getConfig('module_gdt_updater_api_key') ?: '';
 
                 // Принудительная свежая проверка (force_refresh = true)
                 $batch_updates = $this->getServiceFactory()->getUpdateService()->checkBatchUpdates($server_url, $modules, $api_key, true);
@@ -188,22 +185,29 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
                             'code' => $module['code'],
                             'current_version' => $module['version'],
                             'new_version' => $update_info['version'],
-                            'update_url' => route(self::MODULE_PATH . '/update', ['code' => $module['code']], true)
+                            'update_url' => $this->buildUrl(self::MODULE_PATH . '/update', ['code' => $module['code']])
                         );
                     }
                 }
 
                 if (empty($json['modules'])) {
-                    $json['success'] = __(self::MODULE_PATH . '.text_no_updates');
+                    $json['success'] = $this->trans(self::MODULE_PATH . '.text_no_updates');
                 } else {
-                    $json['success'] = sprintf(__(self::MODULE_PATH . '.text_updates_found'), count($json['modules']));
+                    $json['success'] = sprintf($this->trans(self::MODULE_PATH . '.text_updates_found'), count($json['modules']));
                 }
             } else {
-                $json['error'] = __(self::MODULE_PATH . '.error_no_modules');
+                $json['error'] = $this->trans(self::MODULE_PATH . '.error_no_modules');
             }
         }
 
-        response()->json($json);
+        $this->jsonResponse($json);
+    }
+
+    private function getServerUrl(): string
+    {
+        return $this->getConfig('module_gdt_updater_server')
+            ?: getenv('GDT_UPDATE_SERVER')
+            ?: (defined('HTTP_SERVER') ? HTTP_SERVER . 'ocm_gdt_update/server' : '');
     }
 
     public function update()
@@ -213,7 +217,7 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
 
         // 1. Валидация
         if (!$code) {
-            response()->json(['error' => __(self::MODULE_PATH . '.error_code')]);
+            $this->jsonResponse(['error' => $this->trans(self::MODULE_PATH . '.error_code')]);
             return;
         }
 
@@ -223,15 +227,15 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
             // 2. Инициализация параметров
             $server_url = $this->getServerUrl();
             if (empty($server_url)) {
-                throw new Exception(__(self::MODULE_PATH . '.error_server'));
+                throw new Exception($this->trans(self::MODULE_PATH . '.error_server'));
             }
 
             $module = $this->getServiceFactory()->getModuleService()->getModuleByCode($code);
             if (!$module) {
-                throw new Exception(__(self::MODULE_PATH . '.error_module_not_found'));
+                throw new Exception($this->trans(self::MODULE_PATH . '.error_module_not_found'));
             }
 
-            $api_key = config('module_gdt_updater_api_key') ?: '';
+            $api_key = $this->getConfig('module_gdt_updater_api_key') ?: '';
 
             // 3. Проверка обновлений
             $update_info = $this->getServiceFactory()->getUpdateService()->checkModuleUpdate($server_url, $module, $api_key);
@@ -239,11 +243,11 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
             if (isset($update_info['error'])) {
                 $error_type = $update_info['error'] === 'curl' ? '.error_curl' : '.error_http';
                 $msg = $update_info['message'] ?? ($update_info['code'] ?? 'Unknown error');
-                throw new Exception(sprintf(__(self::MODULE_PATH . $error_type), $msg));
+                throw new Exception(sprintf($this->trans(self::MODULE_PATH . $error_type), $msg));
             }
 
             if (!$update_info) {
-                throw new Exception(__(self::MODULE_PATH . '.error_no_update'));
+                throw new Exception($this->trans(self::MODULE_PATH . '.error_no_update'));
             }
 
             // 4. Процесс загрузки и установки
@@ -267,28 +271,23 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
 
             if ($updated_module && $updated_module['version'] === $update_info['version']) {
                 $module_name = $module['name'] ?? $module['module_name'];
-                $json['success'] = sprintf(__(self::MODULE_PATH . '.text_update_success'), $module_name) . " (v{$update_info['version']})";
+                $json['success'] = sprintf($this->trans(self::MODULE_PATH . '.text_update_success'), $module_name) . " (v{$update_info['version']})";
             } else {
-                $json['warning'] = __(self::MODULE_PATH . '.warning_version_not_updated');
+                $json['warning'] = $this->trans(self::MODULE_PATH . '.warning_version_not_updated');
             }
 
         } catch (Exception $e) {
             $json['error'] = $e->getMessage();
         }
 
-        response()->json($json);
+        $this->jsonResponse($json);
     }
 
     protected function validate()
     {
         if (!$this->user->hasPermission('modify', self::MODULE_PATH)) {
-            $this->error['warning'] = __(self::MODULE_PATH . '.error_permission');
+            $this->error['warning'] = $this->trans(self::MODULE_PATH . '.error_permission');
         }
-
-        // Убираем обязательную проверку сервера, так как он может быть задан по умолчанию
-        // if (empty($this->request->post['module_gdt_updater_server'])) {
-        //     $this->error['warning'] = __(self::MODULE_PATH . '.error_server_empty');
-        // }
 
         return !$this->error;
     }
@@ -300,36 +299,35 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
     {
         // Получаем все текущие настройки модуля
         $current_settings = array();
-        $current_settings['module_gdt_updater_server'] = config('module_gdt_updater_server') ?: '';
-        $current_settings['module_gdt_updater_api_key'] = config('module_gdt_updater_api_key') ?: '';
-        $current_settings['module_gdt_updater_status'] = config('module_gdt_updater_status') ?: 0;
-        $current_settings['module_gdt_updater_api_log'] = config('module_gdt_updater_api_log') ?: 0;
-        $current_settings['module_gdt_updater_auto_modules'] = config('module_gdt_updater_auto_modules') ?: array();
+        $current_settings['module_gdt_updater_server'] = $this->getConfig('module_gdt_updater_server') ?: '';
+        $current_settings['module_gdt_updater_api_key'] = $this->getConfig('module_gdt_updater_api_key') ?: '';
+        $current_settings['module_gdt_updater_status'] = $this->getConfig('module_gdt_updater_status') ?: 0;
+        $current_settings['module_gdt_updater_api_log'] = $this->getConfig('module_gdt_updater_api_log') ?: 0;
+        $current_settings['module_gdt_updater_auto_modules'] = $this->getConfig('module_gdt_updater_auto_modules') ?: array();
 
         // Объединяем с новыми настройками
         $final_settings = array_merge($current_settings, $new_settings);
 
         // Сохраняем
-        model('setting/setting')->editSetting('module_gdt_updater', $final_settings);
+        $this->getModel('setting/setting')->editSetting('module_gdt_updater', $final_settings);
     }
-
 
     /**
      * Переключение автообновления для модуля
      */
     public function toggleAutoUpdate()
     {
-        $this->load->language(self::MODULE_PATH . '');
+        $this->load->language(self::MODULE_PATH);
         $this->load->model('setting/setting');
 
         $json = array();
 
-        if (request()->isMethod('post') && request()->post('module_code')) {
-            $module_code = request()->post('module_code');
-            $auto_update = request()->post('auto_update') ? (int) request()->post('auto_update') : 0;
+        if ($this->isPost() && $this->getPostData('module_code')) {
+            $module_code = $this->getPostData('module_code');
+            $auto_update = $this->getPostData('auto_update') ? (int) $this->getPostData('auto_update') : 0;
 
             // Получаем текущий массив модулей с автообновлением
-            $auto_update_modules = config('module_gdt_updater_auto_modules') ?: array();
+            $auto_update_modules = $this->getConfig('module_gdt_updater_auto_modules') ?: array();
 
             if ($auto_update) {
                 // Добавляем модуль в массив автообновления (если еще нет)
@@ -345,12 +343,12 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
             // Сохраняем обновленный массив, сохраняя остальные настройки
             $this->saveModuleSettings(array('module_gdt_updater_auto_modules' => $auto_update_modules));
 
-            $json['success'] = __(self::MODULE_PATH . '.text_auto_update_saved');
+            $json['success'] = $this->trans(self::MODULE_PATH . '.text_auto_update_saved');
         } else {
-            $json['error'] = __(self::MODULE_PATH . '.error_invalid_request');
+            $json['error'] = $this->trans(self::MODULE_PATH . '.error_invalid_request');
         }
 
-        response()->json($json);
+        $this->jsonResponse($json);
     }
 
     /**
@@ -358,16 +356,17 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
      */
     public function toggleMultipleAutoUpdate()
     {
+        $this->load->language(self::MODULE_PATH);
         $this->load->model('setting/setting');
 
         $json = array();
 
-        if (request()->isMethod('post') && request()->post('modules') && is_array(request()->post('modules'))) {
-            $module_codes = request()->post('modules');
-            $auto_update = request()->post('auto_update') ? (int) request()->post('auto_update') : 0;
+        if ($this->isPost() && $this->getPostData('modules') && is_array($this->getPostData('modules'))) {
+            $module_codes = $this->getPostData('modules');
+            $auto_update = $this->getPostData('auto_update') ? (int) $this->getPostData('auto_update') : 0;
 
             // Получаем текущий массив модулей с автообновлением
-            $auto_update_modules = config('module_gdt_updater_auto_modules') ?: array();
+            $auto_update_modules = $this->getConfig('module_gdt_updater_auto_modules') ?: array();
 
             if ($auto_update) {
                 // Добавляем модули в массив автообновления
@@ -385,13 +384,13 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
             // Сохраняем обновленный массив, сохраняя остальные настройки
             $this->saveModuleSettings(array('module_gdt_updater_auto_modules' => $auto_update_modules));
 
-            $action = $auto_update ? __(self::MODULE_PATH . '.text_enabled') : __(self::MODULE_PATH . '.text_disabled');
-            $json['success'] = sprintf(__(self::MODULE_PATH . '.text_auto_update_multiple'), $action, count($module_codes));
+            $action = $auto_update ? $this->trans(self::MODULE_PATH . '.text_enabled') : $this->trans(self::MODULE_PATH . '.text_disabled');
+            $json['success'] = sprintf($this->trans(self::MODULE_PATH . '.text_auto_update_multiple'), $action, count($module_codes));
         } else {
-            $json['error'] = __(self::MODULE_PATH . '.error_invalid_request');
+            $json['error'] = $this->trans(self::MODULE_PATH . '.error_invalid_request');
         }
 
-        response()->json($json);
+        $this->jsonResponse($json);
     }
 
     /**
@@ -399,18 +398,20 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
      */
     public function delete()
     {
+        $this->load->language(self::MODULE_PATH);
+
         try {
             $this->validatePermission();
 
             $code = isset($this->request->get['code']) ? $this->request->get['code'] : '';
             if (empty($code)) {
-                response()->json(['error' => __(self::MODULE_PATH . '.error_code')]);
+                $this->jsonResponse(['error' => $this->trans(self::MODULE_PATH . '.error_code')]);
                 return;
             }
 
             $module = $this->getServiceFactory()->getModuleService()->getModuleByCode($code);
             if (!$module) {
-                response()->json(['error' => sprintf(__(self::MODULE_PATH . '.error_module_not_found_code'), $code)]);
+                $this->jsonResponse(['error' => sprintf($this->trans(self::MODULE_PATH . '.error_module_not_found_code'), $code)]);
                 return;
             }
 
@@ -419,10 +420,10 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
             if ($result === true) {
                 $this->cache->delete('*');
                 $name = $module['module_name'] ?? $module['name'] ?? $code;
-                response()->json(['success' => sprintf(__(self::MODULE_PATH . '.text_delete_success'), $name)]);
+                $this->jsonResponse(['success' => sprintf($this->trans(self::MODULE_PATH . '.text_delete_success'), $name)]);
             } else {
-                $error = is_string($result) ? $result : __(self::MODULE_PATH . '.error_delete_failed');
-                response()->json(['error' => $error]);
+                $error = is_string($result) ? $result : $this->trans(self::MODULE_PATH . '.error_delete_failed');
+                $this->jsonResponse(['error' => $error]);
             }
         } catch (Exception $e) {
             LoggerService::write('GDT Updater error: ' . $e->getMessage());
@@ -435,17 +436,19 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
      */
     public function deleteMultiple()
     {
+        $this->load->language(self::MODULE_PATH);
+
         try {
             $this->validatePermission();
 
-            if (!request()->isMethod('post')) {
-                response()->json(['error' => __(self::MODULE_PATH . '.error_invalid_request')]);
+            if (!$this->isPost()) {
+                $this->jsonResponse(['error' => $this->trans(self::MODULE_PATH . '.error_invalid_request')]);
                 return;
             }
 
             $modules = $this->getPostData('modules');
             if (!$modules || !is_array($modules)) {
-                response()->json(['error' => __(self::MODULE_PATH . '.error_no_modules_specified')]);
+                $this->jsonResponse(['error' => $this->trans(self::MODULE_PATH . '.error_no_modules_specified')]);
                 return;
             }
 
@@ -456,82 +459,67 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
             }
 
             if (!empty($result['success']) && empty($result['errors'])) {
-                response()->json(['success' => sprintf(__(self::MODULE_PATH . '.text_delete_multiple_success'), count($result['success']), implode(', ', $result['success']))]);
+                $this->jsonResponse(['success' => sprintf($this->trans(self::MODULE_PATH . '.text_delete_multiple_success'), count($result['success']), implode(', ', $result['success']))]);
             } elseif (!empty($result['success']) && !empty($result['errors'])) {
-                response()->json(['warning' => sprintf(__(self::MODULE_PATH . '.text_delete_partial_success'), count($result['success']), implode(', ', $result['success']), implode('; ', $result['errors']))]);
+                $this->jsonResponse(['warning' => sprintf($this->trans(self::MODULE_PATH . '.text_delete_partial_success'), count($result['success']), implode(', ', $result['success']), implode('; ', $result['errors']))]);
             } else {
-                response()->json(['error' => sprintf(__(self::MODULE_PATH . '.error_delete_multiple'), implode('; ', $result['errors']))]);
+                $this->jsonResponse(['error' => sprintf($this->trans(self::MODULE_PATH . '.error_delete_multiple'), implode('; ', $result['errors']))]);
             }
         } catch (Exception $e) {
             $this->handleException($e);
         }
     }
 
-
-
-
     /**
      * Установка модуля
      */
     public function install()
     {
-        // Створюємо нову таблицю
-        model(self::MODULE_PATH)->createTables();
+        // Создаем таблицы
+        $this->getModel(self::MODULE_PATH)->createTables();
 
         // Добавляем события
-        model('setting/event')->addEvent('gdt_updater_auto_check', 'admin/controller/common/dashboard/before', self::MODULE_PATH . '/autoCheckEvent');
-        model('setting/event')->addEvent('auto_update_menu', 'admin/view/common/column_left/before', self::MODULE_PATH . '/menuAdmin');
+        $this->getModel('setting/event')->addEvent('gdt_updater_auto_check', 'admin/controller/common/dashboard/before', self::MODULE_PATH . '/autoCheckEvent');
+        $this->getModel('setting/event')->addEvent('auto_update_menu', 'admin/view/common/column_left/before', self::MODULE_PATH . '/menuAdmin');
 
-        // Логируем успешную установку
         LoggerService::write('GDT Updater: Events added, table created, module installed.');
     }
 
     public function uninstall()
     {
-        model('setting/event')->deleteEventByCode('gdt_updater_auto_check');
-        model('setting/event')->deleteEventByCode('auto_update_menu');
+        $this->getModel('setting/event')->deleteEventByCode('gdt_updater_auto_check');
+        $this->getModel('setting/event')->deleteEventByCode('auto_update_menu');
 
-        model('setting/setting')->deleteSetting('module_gdt_updater');
+        $this->getModel('setting/setting')->deleteSetting('module_gdt_updater');
 
         // Удаляем Dashboard модуль при деинсталляции
-        model('setting/extension')->uninstall('dashboard', 'gdt_updater');
-
-        // Удаляем настройки Dashboard модуля
-        model('setting/setting')->deleteSetting('dashboard_gdt_updater');
+        $this->getModel('setting/extension')->uninstall('dashboard', 'gdt_updater');
+        $this->getModel('setting/setting')->deleteSetting('dashboard_gdt_updater');
 
         // Очищаем массив автообновления
         $this->saveModuleSettings(array('module_gdt_updater_auto_modules' => array()));
 
         // Clean up module tables
-        model(self::MODULE_PATH)->dropTables();
+        $this->getModel(self::MODULE_PATH)->dropTables();
     }
 
     public function menuAdmin($route, array &$data, $menu_id = 0)
     {
-
         $children = array();
-        //install
 
         $children[] = array(
-            'name' => __('extension/module/gdt_install_modules.heading_title'),
-            'href' => route(self::MODULE_PATH),
+            'name' => $this->trans('extension/module/gdt_install_modules.heading_title'),
+            'href' => $this->buildUrl(self::MODULE_PATH),
             'children' => array()
         );
 
-        // $children[] = array(
-        //     'name' => __(self::MODULE_PATH . '.text_update'),
-        //     'href' => route(self::MODULE_PATH . ''),
-        //     'children' => array()
-        // );
-
         $data['menus'][] = array(
             'id' => 'menu-gdt-updater',
-            'name' => __(self::MODULE_PATH . '.heading_title'),
-            'href' => route(self::MODULE_PATH),
+            'name' => $this->trans(self::MODULE_PATH . '.heading_title'),
+            'href' => $this->buildUrl(self::MODULE_PATH),
             'icon' => 'fa fa-refresh',
             'children' => []
         );
-
 
         foreach ($data['menus'] as &$menu) {
             if ($menu['id'] == 'menu-extension') {
@@ -547,6 +535,6 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
     public function autoCheckEvent($route, &$data, &$output)
     {
         // Запускаем автопроверку и обновление
-        model(self::MODULE_PATH)->autoCheckUpdate();
+        $this->getModel(self::MODULE_PATH)->autoCheckUpdate();
     }
 }

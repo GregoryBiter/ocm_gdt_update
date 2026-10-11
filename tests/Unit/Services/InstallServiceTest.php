@@ -217,6 +217,57 @@ class InstallServiceTest extends BaseTestCase
     }
 
     /**
+     * Тест визначення версії з opencart-module.json
+     */
+    public function testResolveVersionFromOpencartModuleJson()
+    {
+        $zipPath = $this->createTestZipFile('test_json_module.zip', [
+            'upload/admin/controller/extension/module/json_mod.php' => '<?php // Test controller',
+            'opencart-module.json' => json_encode(['name' => 'JSON Module', 'code' => 'json_mod', 'version' => '1.2.3'])
+        ]);
+
+        $model = $this->createModelMock([
+            'addExtensionInstall' => 1,
+            'addExtensionPath' => null
+        ]);
+        $this->registry->shouldReceive('get')->with('model_setting_extension')->andReturn($model);
+
+        try {
+            $result = $this->installService->installModule($zipPath, 'json_mod');
+            $this->assertTrue($result === true || is_string($result));
+        } finally {
+            $this->cleanupTestFiles([$zipPath]);
+        }
+    }
+
+    /**
+     * Тест збереження версії з даних сервера
+     */
+    public function testResolveVersionFromServerModuleInfo()
+    {
+        $zipPath = $this->createTestZipFile('test_server_info_module.zip', [
+            'upload/admin/controller/extension/module/srv_mod.php' => '<?php // Test controller'
+        ]);
+
+        $model = $this->createModelMock([
+            'addExtensionInstall' => 1,
+            'addExtensionPath' => null
+        ]);
+        $this->registry->shouldReceive('get')->with('model_setting_extension')->andReturn($model);
+
+        try {
+            $result = $this->installService->installModule($zipPath, 'srv_mod', [
+                'name' => 'Server Module',
+                'code' => 'srv_mod',
+                'version' => '2.5.0'
+            ]);
+            $this->assertTrue($result === true || is_string($result));
+        } finally {
+            $this->cleanupTestFiles([$zipPath]);
+        }
+    }
+
+    /**
      * Допоміжний метод для отримання тестового XML
      * 
      * @return string

@@ -693,6 +693,7 @@ function gdtInstallModules() {
                     if (json.success) {
                         this.showAlert('success', json.success);
                         module.installed = true;
+                        module.installed_version = module.version;
                         module.update_available = false;
                     } else if (json.error) {
                         this.showAlert('danger', json.error);

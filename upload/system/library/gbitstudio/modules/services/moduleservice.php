@@ -175,11 +175,16 @@ class ModuleService {
     }
 
     private function formatModuleData($data, $code) {
+        $version = $data['version'] ?? '0.0.0';
+        if ($version === '0.0.0') {
+            $version = $this->healModuleVersion($code, $version);
+        }
+
         return [
             'code' => $data['code'] ?? $code,
             'name' => $data['module_name'] ?? $data['name'] ?? $code,
             'module_name' => $data['module_name'] ?? $data['name'] ?? $code,
-            'version' => $data['version'] ?? '0.0.0',
+            'version' => $version,
             'author' => $data['creator_name'] ?? $data['author'] ?? 'Unknown',
             'creator_name' => $data['creator_name'] ?? $data['author'] ?? 'Unknown',
             'author_url' => $data['author_url'] ?? ($data['link'] ?? ''),
@@ -191,5 +196,45 @@ class ModuleService {
             'paths' => $data['paths'] ?? [],
             'source' => $data['source'] ?? 'database'
         ];
+    }
+
+    private function healModuleVersion($code, $current_version) {
+        if (!empty($current_version) && $current_version !== '0.0.0') {
+            return $current_version;
+        }
+
+        // 1. Поиск версии в oc_modification
+        try {
+            $table_query = $this->db->query("SHOW TABLES LIKE '" . DB_PREFIX . "modification'");
+            if ($table_query->num_rows > 0) {
+                $q = $this->db->query("SELECT `version` FROM `" . DB_PREFIX . "modification` WHERE `code` = '" . $this->db->escape($code) . "' AND `status` = '1' LIMIT 1");
+                if ($q->num_rows && !empty($q->row['version']) && $q->row['version'] !== '0.0.0') {
+                    $healed = ltrim($q->row['version'], 'v');
+                    $this->updateModuleVersionInDatabase($code, $healed);
+                    return $healed;
+                }
+            }
+        } catch (\Throwable $e) {}
+
+        // 2. Поиск версии в ocm_module_versions
+        try {
+            $table_query = $this->db->query("SHOW TABLES LIKE '" . DB_PREFIX . "ocm_module_versions'");
+            if ($table_query->num_rows > 0) {
+                $q = $this->db->query("SELECT `version` FROM `" . DB_PREFIX . "ocm_module_versions` WHERE `module_code` = '" . $this->db->escape($code) . "' AND `version` != '0.0.0' ORDER BY `version_id` DESC LIMIT 1");
+                if ($q->num_rows && !empty($q->row['version'])) {
+                    $healed = ltrim($q->row['version'], 'v');
+                    $this->updateModuleVersionInDatabase($code, $healed);
+                    return $healed;
+                }
+            }
+        } catch (\Throwable $e) {}
+
+        return $current_version ?: '0.0.0';
+    }
+
+    private function updateModuleVersionInDatabase($code, $version) {
+        try {
+            $this->db->query("UPDATE `" . DB_PREFIX . "ocm_modules` SET `installed_version` = '" . $this->db->escape($version) . "', `updated_at` = NOW() WHERE `code` = '" . $this->db->escape($code) . "'");
+        } catch (\Throwable $e) {}
     }
 }

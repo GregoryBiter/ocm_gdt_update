@@ -31,18 +31,38 @@ abstract class BaseTestCase extends TestCase
         
         // Створюємо mock для load
         $load = Mockery::mock('Loader');
-        $load->shouldReceive('model')->andReturnUsing(function ($path) use ($registry) {
+        $load->shouldReceive('model')->byDefault()->andReturnUsing(function ($path) use ($registry) {
             $modelName = 'model_' . str_replace('/', '_', $path);
             $model = Mockery::mock('Model');
             $registry->shouldReceive('get')->with($modelName)->andReturn($model);
             return $model;
         });
+        $load->shouldReceive('language')->byDefault()->andReturn([]);
+        $load->shouldReceive('view')->byDefault()->andReturn('');
+        $load->shouldReceive('controller')->byDefault()->andReturn('');
         
         $registry->shouldReceive('get')->with('load')->andReturn($load);
         
         // Додаємо mock для log
         $log = $this->createLogMock();
         $registry->shouldReceive('get')->with('log')->andReturn($log);
+
+        // Додаємо mock для db
+        $db = Mockery::mock('DB');
+        $db->shouldReceive('escape')->andReturnUsing(function ($str) {
+            return addslashes($str);
+        });
+        $queryResult = new \stdClass();
+        $queryResult->num_rows = 0;
+        $queryResult->rows = [];
+        $queryResult->row = [];
+        $db->shouldReceive('query')->andReturn($queryResult);
+        $registry->shouldReceive('get')->with('db')->andReturn($db);
+
+        // Додаємо mock для config
+        $config = Mockery::mock('Config');
+        $config->shouldReceive('get')->andReturn(null);
+        $registry->shouldReceive('get')->with('config')->andReturn($config);
         
         return $registry;
     }

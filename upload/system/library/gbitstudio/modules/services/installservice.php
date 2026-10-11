@@ -338,14 +338,40 @@ class InstallService {
                 }
             }
 
+            // Inspect extract_dir for metadata files
+            $module_json_file = $extract_dir . '/opencart-module.json';
+            if (is_file($module_json_file)) {
+                $parsed_json = json_decode(file_get_contents($module_json_file), true);
+                if (is_array($parsed_json)) {
+                    foreach ($parsed_json as $k => $v) {
+                        if ((!isset($module_data[$k]) || $module_data[$k] === '') && $v !== null && $v !== '') {
+                            $module_data[$k] = $v;
+                        }
+                    }
+                }
+            }
+
+            $install_json_file = $extract_dir . '/install.json';
+            if (is_file($install_json_file)) {
+                $parsed_json = json_decode(file_get_contents($install_json_file), true);
+                if (is_array($parsed_json)) {
+                    foreach ($parsed_json as $k => $v) {
+                        if ((!isset($module_data[$k]) || $module_data[$k] === '') && $v !== null && $v !== '') {
+                            $module_data[$k] = $v;
+                        }
+                    }
+                }
+            }
+
             $code = $module_data['code'] ?? $module_code ?? '';
             if (empty($code)) {
                 return 'Module code is required';
             }
             
             // Записуємо в базу даних
-            $name = $module_data['module_name'] ?? $module_data['name'] ?? $code;
             $version = $this->resolveVersion($module_data, $extract_dir, $code, $server_module_info);
+            $module_data['version'] = $version;
+            $name = $module_data['module_name'] ?? $module_data['name'] ?? $code;
             $module_type = $module_data['type'] ?? 'module';
 
             $this->db->query("INSERT INTO `" . DB_PREFIX . "ocm_modules` SET 
@@ -550,9 +576,35 @@ class InstallService {
     private function resolveVersion(array $module_data, $extract_dir, $code, $server_module_info = array()) {
         $version = '0.0.0';
 
-        if (is_array($server_module_info) && !empty($server_module_info['version'])) {
+        // 1. Из переданных данных с сервера
+        if (is_array($server_module_info) && !empty($server_module_info['version']) && $server_module_info['version'] !== '0.0.0') {
             $version = (string)$server_module_info['version'];
-        } else {
+        }
+
+        // 2. Из opencart-module.json в распакованном архиве
+        if ($version === '0.0.0') {
+            $module_json_file = $extract_dir . '/opencart-module.json';
+            if (is_file($module_json_file)) {
+                $parsed_json = json_decode(file_get_contents($module_json_file), true);
+                if (is_array($parsed_json) && !empty($parsed_json['version'])) {
+                    $version = (string)$parsed_json['version'];
+                }
+            }
+        }
+
+        // 3. Из install.json в распакованном архиве
+        if ($version === '0.0.0') {
+            $install_json_file = $extract_dir . '/install.json';
+            if (is_file($install_json_file)) {
+                $parsed_json = json_decode(file_get_contents($install_json_file), true);
+                if (is_array($parsed_json) && !empty($parsed_json['version'])) {
+                    $version = (string)$parsed_json['version'];
+                }
+            }
+        }
+
+        // 4. Из install.xml в распакованном архиве
+        if ($version === '0.0.0') {
             $install_xml = $extract_dir . '/install.xml';
             if (is_file($install_xml)) {
                 $content = file_get_contents($install_xml);
@@ -565,14 +617,39 @@ class InstallService {
                         }
                     }
                 }
-            } elseif (!empty($module_data['version'])) {
-                $version = (string)$module_data['version'];
-            } else {
-                $query = $this->db->query("SELECT `version` FROM `" . DB_PREFIX . "modification` WHERE `code` = '" . $this->db->escape($code) . "' LIMIT 1");
-                if ($query->num_rows && !empty($query->row['version'])) {
+            }
+        }
+
+        // 5. Из данных модуля $module_data
+        if ($version === '0.0.0' && !empty($module_data['version']) && $module_data['version'] !== '0.0.0') {
+            $version = (string)$module_data['version'];
+        }
+
+        // 6. Из таблицы oc_modification
+        if ($version === '0.0.0') {
+            try {
+                $query = $this->db->query("SELECT `version` FROM `" . DB_PREFIX . "modification` WHERE `code` = '" . $this->db->escape($code) . "' AND `status` = '1' LIMIT 1");
+                if ($query->num_rows && !empty($query->row['version']) && $query->row['version'] !== '0.0.0') {
                     $version = (string)$query->row['version'];
                 }
-            }
+            } catch (\Throwable $e) {}
+        }
+
+        // 7. Fallback: запрос к серверу обновлений
+        if ($version === '0.0.0') {
+            try {
+                $config = $this->registry->get('config');
+                $server_url = ($config ? $config->get('module_gdt_updater_server') : null)
+                    ?: (getenv('GDT_UPDATE_SERVER') ?: (defined('HTTP_SERVER') ? HTTP_SERVER . 'ocm_gdt_update/server' : ''));
+                $api_key = ($config ? $config->get('module_gdt_updater_api_key') : '') ?: '';
+                if (!empty($server_url)) {
+                    $updateService = new UpdateService($this->registry);
+                    $check_info = $updateService->checkModuleUpdate($server_url, ['code' => $code, 'version' => '0.0.0'], $api_key);
+                    if ($check_info && is_array($check_info) && !empty($check_info['version'])) {
+                        $version = (string)$check_info['version'];
+                    }
+                }
+            } catch (\Throwable $e) {}
         }
 
         return ltrim($version, 'v');
