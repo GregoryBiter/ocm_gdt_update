@@ -49,6 +49,32 @@ class ModelExtensionModuleGdtUpdater extends Model {
                 KEY `module_code` (`module_code`)
             ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
         ");
+
+        $this->db->query("
+            CREATE TABLE IF NOT EXISTS `" . DB_PREFIX . "ocm_module_versions` (
+                `version_id` INT(11) NOT NULL AUTO_INCREMENT,
+                `module_code` VARCHAR(64) NOT NULL,
+                `version` VARCHAR(32) NOT NULL,
+                `package_hash` VARCHAR(64) NOT NULL DEFAULT '',
+                `index_hash` VARCHAR(64) NOT NULL DEFAULT '',
+                `changelog` TEXT NOT NULL,
+                `source` VARCHAR(32) NOT NULL DEFAULT 'gdt_updater',
+                `published_at` DATETIME NOT NULL,
+                `applied_at` DATETIME NOT NULL,
+                PRIMARY KEY (`version_id`),
+                KEY `module_code` (`module_code`)
+            ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
+        ");
+    }
+
+    /**
+     * Видаляє таблиці модуля
+     */
+    public function dropTables() {
+        $this->db->query("DROP TABLE IF EXISTS `" . DB_PREFIX . "ocm_module_versions`");
+        $this->db->query("DROP TABLE IF EXISTS `" . DB_PREFIX . "ocm_module_files`");
+        $this->db->query("DROP TABLE IF EXISTS `" . DB_PREFIX . "ocm_modules`");
+        $this->db->query("DROP TABLE IF EXISTS `" . DB_PREFIX . "gdt_modules`");
     }
 
     /**

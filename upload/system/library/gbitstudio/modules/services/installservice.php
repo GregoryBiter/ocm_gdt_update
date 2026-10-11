@@ -171,6 +171,12 @@ class InstallService {
         foreach ($files as $file) {
             $destination = str_replace('\\', '/', substr($file, strlen($directory . 'upload/')));
 
+            // Path Traversal Security Check
+            if (strpos($destination, '..') !== false || strpos($destination, './') === 0 || strpos($destination, '/') === 0) {
+                LoggerService::error('Security risk: Invalid file path detected: ' . $destination, 'InstallService');
+                return 'Invalid file path in archive: ' . $destination;
+            }
+
             $path = $this->getDestinationPath($destination);
 
             if (is_dir($file) && !is_dir($path)) {
@@ -593,6 +599,16 @@ class InstallService {
     }
 
     private function ensureCoreTables() {
+        try {
+            $this->registry->get('load')->model('extension/module/gdt_updater');
+            if ($this->registry->has('model_extension_module_gdt_updater')) {
+                $this->registry->get('model_extension_module_gdt_updater')->createTables();
+                return;
+            }
+        } catch (\Throwable $e) {
+            // fallback to direct SQL
+        }
+
         $this->db->query("
             CREATE TABLE IF NOT EXISTS `" . DB_PREFIX . "ocm_modules` (
                 `module_id` INT(11) NOT NULL AUTO_INCREMENT,
@@ -758,9 +774,10 @@ class InstallService {
         if ($script) {
             LoggerService::info("Executing module script: " . basename($script), 'InstallService');
             try {
-                $registry = $this->registry;
-                $db = $this->db;
-                include $script;
+                $runner = function ($scriptPath, $registry, $db) {
+                    include $scriptPath;
+                };
+                $runner($script, $this->registry, $this->db);
             } catch (\Throwable $e) {
                 LoggerService::error("Error executing script " . basename($script) . ": " . $e->getMessage(), 'InstallService');
             }

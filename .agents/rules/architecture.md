@@ -9,9 +9,8 @@ This rule ensures that all development on the `ocm_gdt_update` module follows th
 
 ## 1. Database-First Principle
 - **CRITICAL**: Do NOT use `opencart-module.json` files in `DIR_SYSTEM . "modules/"` for module discovery or data storage for installed modules.
-- Always use the `{DB_PREFIX}gdt_modules` table.
-- Metadata is stored in the `data` (JSON) column.
-- Installed file paths are stored in the `paths` (JSON array) column.
+- Always use the `{DB_PREFIX}ocm_modules`, `{DB_PREFIX}ocm_module_files`, and `{DB_PREFIX}ocm_module_versions` tables.
+- Metadata is stored in the `metadata_json` column and file tracking in `ocm_module_files`.
 
 ## 2. Service-Oriented Architecture
 - Logic must be encapsulated in Services located in `upload/system/library/gbitstudio/modules/services/`.

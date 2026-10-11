@@ -21,14 +21,11 @@ It provides automatic update checks against an external update server, archive e
 
 ### 2.1. Database-First Principle (CRITICAL)
 - **NO FILESYSTEM JSON STORAGE FOR INSTALLED MODULES**: Do **NOT** use or search for `opencart-module.json` files in `DIR_SYSTEM . "modules/"` for discovering or reading metadata of installed modules.
-- All installed module records are stored exclusively in the database table `{DB_PREFIX}gdt_modules`.
-- Schema details:
-  - `module_id`: Primary Key (AUTO_INCREMENT).
-  - `code`: Unique module identifier (e.g. `ocm_test`).
-  - `name`, `version`: High-level metadata columns for indexing.
-  - `data`: Complete metadata from `opencart-module.json`, stored as a JSON string.
-  - `paths`: JSON array of all file paths installed by the module (used for tracking and uninstallation).
-  - `date_added`: Creation timestamp.
+- Installed module records and tracking files are stored exclusively in the database tables:
+  - `{DB_PREFIX}ocm_modules`: (`module_id`, `code`, `name`, `type`, `installed_version`, `source`, `metadata_json`, `status`, `installed_at`, `updated_at`).
+  - `{DB_PREFIX}ocm_module_files`: (`file_id`, `module_code`, `file_path`, `file_hash`, `installed_at`, `updated_at`, `removed_at`).
+  - `{DB_PREFIX}ocm_module_versions`: (`version_id`, `module_code`, `version`, `package_hash`, `index_hash`, `changelog`, `source`, `published_at`, `applied_at`).
+  *(Legacy compatibility table: `{DB_PREFIX}gdt_modules`)*
 
 ### 2.2. Service-Oriented Architecture (SOA)
 - Business logic is strictly separated from OpenCart controllers and models, encapsulated in domain services located in `upload/system/library/gbitstudio/modules/services/`.

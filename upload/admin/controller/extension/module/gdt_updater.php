@@ -502,37 +502,8 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
         // Очищаем массив автообновления
         $this->saveModuleSettings(array('module_gdt_updater_auto_modules' => array()));
 
-        // Legacy cleanup
-        $this->db->query("DROP TABLE IF EXISTS `" . DB_PREFIX . "gdt_modules` ");
-    }
-
-
-
-    public function checkUpdates()
-    {
-
-
-        $server_url = config('module_gdt_updater_server');
-        $current_version = '1.0.0'; // Текущая версия модуля
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $server_url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, array('version' => $current_version));
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-
-        $response = curl_exec($ch);
-        curl_close($ch);
-
-        if ($response) {
-            $data = json_decode($response, true);
-            if (isset($data['update_available']) && $data['update_available']) {
-                session('success', __('text_update_available'));
-            }
-        }
-
-        session('success', __('text_check_completed'));
+        // Clean up module tables
+        model(self::MODULE_PATH)->dropTables();
     }
 
     public function menuAdmin($route, array &$data, $menu_id = 0)
