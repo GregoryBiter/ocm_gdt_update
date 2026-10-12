@@ -21,6 +21,32 @@ $_['text_search_desc'] = 'Знайдіть потрібний модуль за 
 // Messages
 $_['text_install_success'] = 'Модуль %s успішно встановлено';
 
+// Conflicts
+$_['text_conflicts'] = 'Конфлікти';
+$_['text_conflict_resolution'] = 'Вирішення конфліктів версій';
+$_['text_conflict_page_desc'] = 'Порівняння версій між файлом modules.json та базою даних (config). Оберіть джерело, якому слід довіряти для кожного модуля.';
+$_['text_conflict_warning_title'] = 'Увага! Виявлено невідповідності версій';
+$_['text_conflict_warning_desc'] = 'Виявлено розбіжностей між modules.json та базою даних (config): %d';
+$_['text_resolve_conflicts'] = 'Вирішити конфлікти';
+$_['text_no_conflicts'] = 'Конфліктів не виявлено';
+$_['text_no_conflicts_desc'] = 'Всі версії модулів у файлі modules.json та базі даних/config узгоджені.';
+$_['text_trust_file'] = 'Довіряти файлу (modules.json)';
+$_['text_trust_db'] = 'Довіряти базі даних (DB / config)';
+$_['text_trust_file_all'] = 'Довіряти modules.json для всіх';
+$_['text_trust_db_all'] = 'Довіряти базі даних для всіх';
+$_['text_apply'] = 'Застосувати';
+$_['text_apply_selected'] = 'Застосувати для обраних';
+$_['text_file_version'] = 'Версія в modules.json';
+$_['text_db_version'] = 'Версія в БД / Config';
+$_['text_conflict_type'] = 'Тип невідповідності';
+$_['text_action_trust'] = 'Чому довіряти';
+$_['text_type_version_mismatch'] = 'Невідповідність версій';
+$_['text_type_missing_in_db'] = 'Відсутній в БД';
+$_['text_type_missing_in_file'] = 'Відсутній в modules.json';
+$_['text_type_config_mismatch'] = 'Невідповідність з config';
+$_['text_conflict_resolved'] = 'Конфлікт для модуля %s успішно вирішено';
+$_['text_conflicts_resolved_count'] = 'Успішно вирішено конфліктів: %d';
+
 // Error
 $_['error_permission'] = 'У вас немає прав для управління модулями GDT!';
 $_['error_query_empty'] = 'Пошуковий запит не може бути порожнім';

@@ -9,6 +9,7 @@ use Gbitstudio\Modules\Services\InstallService;
 use Gbitstudio\Modules\Services\DashboardService;
 use Gbitstudio\Modules\Services\AutoUpdateService;
 use Gbitstudio\Modules\Services\ModuleCatalogService;
+use Gbitstudio\Modules\Services\ConflictService;
 use Gbitstudio\Modules\Services\LoggerService;
 
 /**
@@ -152,6 +153,23 @@ class ServiceFactory
         }
 
         return $this->services['catalog'];
+    }
+
+    /**
+     * Отримує сервіс вирішення конфліктів
+     *
+     * @return ConflictService
+     */
+    public function getConflictService()
+    {
+        if (!isset($this->services['conflict'])) {
+            $this->services['conflict'] = new ConflictService(
+                $this->registry,
+                $this->getModuleRegistryService()
+            );
+        }
+
+        return $this->services['conflict'];
     }
 
     /**

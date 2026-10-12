@@ -33,6 +33,22 @@
     <!-- Сообщения -->
     <div id="alert-container"></div>
 
+    <!-- Предупреждение о конфликтах версий -->
+    <template x-if="conflictsCount > 0">
+      <div class="alert alert-warning alert-dismissible" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <div>
+          <i class="fa fa-exclamation-triangle fa-lg"></i>
+          <strong>{{ text_conflict_warning_title|default('Внимание! Обнаружены несоответствия версий') }}</strong>:
+          <span>Обнаружено расхождений между файлом modules.json и базой данных (config): <strong x-text="conflictsCount"></strong>.</span>
+        </div>
+        <div>
+          <a href="{{ conflicts_url }}" class="btn btn-warning btn-sm" style="font-weight:bold; box-shadow:0 1px 3px rgba(0,0,0,0.2);">
+            <i class="fa fa-wrench"></i> {{ text_resolve_conflicts|default('Решить конфликты') }}
+          </a>
+        </div>
+      </div>
+    </template>
+
     {% if current_page == 'installed' %}
     <!-- Модальное окно настроек -->
     <div class="modal fade" id="modal-settings" tabindex="-1" role="dialog">
@@ -124,6 +140,14 @@
           <li class="{% if current_page == 'search' %}active{% endif %}">
             <a href="{{ search_url }}"><i class="fa fa-search"></i> Поиск</a>
           </li>
+          <li class="{% if current_page == 'conflicts' %}active{% endif %}">
+            <a href="{{ conflicts_url }}">
+              <i class="fa fa-wrench"></i> Конфликты
+              <template x-if="conflictsCount > 0">
+                <span class="label label-warning" style="margin-left:5px; border-radius:10px;" x-text="conflictsCount"></span>
+              </template>
+            </a>
+          </li>
         </ul>
       </div>
     </div>
@@ -132,7 +156,9 @@
     <div class="panel panel-default pw-panel">
       <div class="panel-heading pw-panel-heading">
         <h3 class="panel-title">
-          {% if current_page == 'installed' %}
+          {% if current_page == 'conflicts' %}
+            <i class="fa fa-wrench"></i> {{ page_title|default('Решение конфликтов версий') }}
+          {% elseif current_page == 'installed' %}
             <i class="fa fa-plug"></i> {{ page_title|default('Установленные модули') }}
           {% elseif current_page == 'store' %}
             <i class="fa fa-shopping-cart"></i> {{ page_title|default('Магазин модулей') }}
@@ -155,7 +181,120 @@
         {% endif %}
       </div>
       <div class="panel-body">
-        {% if current_page == 'installed' %}
+        {% if current_page == 'conflicts' %}
+          <div class="conflicts-container">
+            <template x-if="conflictsList.length === 0">
+              <div class="pw-no-modules" style="padding:40px 20px; text-align:center;">
+                <i class="fa fa-check-circle text-success" style="font-size:48px; margin-bottom:15px;"></i>
+                <h3>{{ text_no_conflicts|default('Конфликтов не обнаружено') }}</h3>
+                <p class="text-muted">{{ text_no_conflicts_desc|default('Все версии модулей в файле modules.json и базе данных/config согласованы.') }}</p>
+                <a href="{{ installed_url }}" class="btn btn-primary" style="margin-top:15px;">К установленным модулям</a>
+              </div>
+            </template>
+
+            <template x-if="conflictsList.length > 0">
+              <div>
+                <!-- Верхняя панель массовых действий -->
+                <div class="well well-sm" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:20px; background:#f9f9f9;">
+                  <div>
+                    <span class="text-muted">Всего несовпадений: <strong x-text="conflictsList.length"></strong></span>
+                    <span x-show="selectedConflicts.length > 0" class="text-info" style="margin-left:10px;">
+                      (Выбрано: <strong x-text="selectedConflicts.length"></strong>)
+                    </span>
+                  </div>
+                  <div class="btn-group">
+                    <button type="button" @click="resolveAll('file')" class="btn btn-default btn-sm" :disabled="isResolving">
+                      <i class="fa fa-file-code-o text-primary"></i> {{ text_trust_file_all|default('Доверять modules.json для всех') }}
+                    </button>
+                    <button type="button" @click="resolveAll('db')" class="btn btn-default btn-sm" :disabled="isResolving">
+                      <i class="fa fa-database text-success"></i> {{ text_trust_db_all|default('Доверять базе данных для всех') }}
+                    </button>
+                    <button type="button" @click="resolveSelected()" class="btn btn-primary btn-sm" :disabled="isResolving || selectedConflicts.length === 0">
+                      <i class="fa fa-check"></i> {{ text_apply_selected|default('Применить выбранные') }} (<span x-text="selectedConflicts.length"></span>)
+                    </button>
+                  </div>
+                </div>
+
+                <div class="table-responsive">
+                  <table class="table table-bordered table-hover">
+                    <thead>
+                      <tr style="background:#f5f5f5;">
+                        <th style="width:40px; text-align:center;">
+                          <input type="checkbox" @change="toggleSelectAllConflicts()" :checked="allConflictsSelected">
+                        </th>
+                        <th>Модуль</th>
+                        <th style="width:160px; text-align:center;">{{ text_file_version|default('Версия в modules.json') }}</th>
+                        <th style="width:170px; text-align:center;">{{ text_db_version|default('Версия в БД / Config') }}</th>
+                        <th style="width:180px;">{{ text_conflict_type|default('Тип несоответствия') }}</th>
+                        <th style="width:280px;">{{ text_action_trust|default('Чему доверять?') }}</th>
+                        <th style="width:120px; text-align:center;">Действие</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <template x-for="item in conflictsList" :key="item.code">
+                        <tr>
+                          <td style="text-align:center; vertical-align:middle;">
+                            <input type="checkbox" :value="item.code" x-model="selectedConflicts">
+                          </td>
+                          <td style="vertical-align:middle;">
+                            <strong x-text="item.name"></strong>
+                            <div class="text-muted" style="font-size:12px;" x-text="'Код: ' + item.code"></div>
+                            <div class="text-muted" style="font-size:11px; margin-top:2px;" x-text="item.description"></div>
+                          </td>
+                          <td style="text-align:center; vertical-align:middle;">
+                            <template x-if="item.file_version">
+                              <span class="label label-primary" style="font-size:13px;" x-text="'v' + item.file_version"></span>
+                            </template>
+                            <template x-if="!item.file_version">
+                              <span class="label label-default" style="font-size:12px;">Отсутствует</span>
+                            </template>
+                          </td>
+                          <td style="text-align:center; vertical-align:middle;">
+                            <template x-if="item.db_version">
+                              <span class="label label-success" style="font-size:13px;" x-text="'v' + item.db_version"></span>
+                            </template>
+                            <template x-if="!item.db_version">
+                              <span class="label label-default" style="font-size:12px;">Отсутствует</span>
+                            </template>
+                            <template x-if="item.config_version && item.config_version !== item.db_version">
+                              <div class="text-muted" style="font-size:11px; margin-top:3px;" x-text="'(config: v' + item.config_version + ')'"></div>
+                            </template>
+                          </td>
+                          <td style="vertical-align:middle;">
+                            <span class="label" :class="{
+                              'label-danger': item.type === 'version_mismatch',
+                              'label-warning': item.type === 'missing_in_db' || item.type === 'missing_in_file',
+                              'label-info': item.type === 'config_mismatch'
+                            }" x-text="item.type_label"></span>
+                          </td>
+                          <td style="vertical-align:middle;">
+                            <div class="radio" style="margin:2px 0;">
+                              <label>
+                                <input type="radio" :name="'trust_' + item.code" value="file" x-model="trustChoices[item.code]">
+                                <i class="fa fa-file-code-o text-primary"></i> {{ text_trust_file|default('Файлу (modules.json)') }}
+                              </label>
+                            </div>
+                            <div class="radio" style="margin:2px 0;">
+                              <label>
+                                <input type="radio" :name="'trust_' + item.code" value="db" x-model="trustChoices[item.code]">
+                                <i class="fa fa-database text-success"></i> {{ text_trust_db|default('Базе данных (БД/Config)') }}
+                              </label>
+                            </div>
+                          </td>
+                          <td style="text-align:center; vertical-align:middle;">
+                            <button type="button" @click="resolveSingle(item)" class="btn btn-sm btn-primary" :disabled="isResolving">
+                              <i class="fa fa-check"></i> {{ text_apply|default('Применить') }}
+                            </button>
+                          </td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </template>
+          </div>
+        {% elseif current_page == 'installed' %}
           {% if registry_error %}
             <div class="alert alert-danger">{{ registry_error }}</div>
           {% elseif modules is empty %}
@@ -518,6 +657,11 @@ function gdtInstallModules() {
         pageTitle: '{{ page_title|default("Модули") }}',
         userToken: '{{ user_token }}',
         modules: {% if current_page == 'installed' %}{{ modules|json_encode }}{% else %}[]{% endif %},
+        conflictsCount: {{ conflicts_count|default(0) }},
+        conflictsList: {% if current_page == 'conflicts' %}{{ conflicts|json_encode }}{% else %}[]{% endif %},
+        selectedConflicts: [],
+        trustChoices: {},
+        isResolving: false,
         isLoading: false,
         isCheckingUpdates: false,
         isSavingSettings: false,
@@ -552,13 +696,120 @@ function gdtInstallModules() {
             saveSettings:  '{{ save_settings_url|default("") }}',
             checkUpdates:  '{{ check_updates_url|default("") }}',
             toggleAutoUpdate: '{{ toggle_auto_update_url|default("") }}',
-            deleteMultiple: '{{ delete_multiple_url|default("") }}'
+            deleteMultiple: '{{ delete_multiple_url|default("") }}',
+            resolveConflict: '{{ resolve_conflict_url|default("") }}',
+            resolveAllConflicts: '{{ resolve_all_conflicts_url|default("") }}',
+            getConflicts:  '{{ get_conflicts_url|default("") }}'
         },
 
         init() {
-            if (this.currentPage && this.currentPage !== 'search' && this.currentPage !== 'installed') {
+            if (this.conflictsList && this.conflictsList.length > 0) {
+                this.conflictsList.forEach(c => {
+                    this.trustChoices[c.code] = c.in_file ? 'file' : 'db';
+                });
+            }
+
+            if (this.currentPage && this.currentPage !== 'search' && this.currentPage !== 'installed' && this.currentPage !== 'conflicts') {
                 this.loadModules();
             }
+        },
+
+        get allConflictsSelected() {
+            return this.conflictsList.length > 0 && this.selectedConflicts.length === this.conflictsList.length;
+        },
+
+        toggleSelectAllConflicts() {
+            if (this.allConflictsSelected) {
+                this.selectedConflicts = [];
+            } else {
+                this.selectedConflicts = this.conflictsList.map(c => c.code);
+            }
+        },
+
+        resolveSingle(item) {
+            this.isResolving = true;
+            const trust = this.trustChoices[item.code] || 'file';
+            const formData = new FormData();
+            formData.append('code', item.code);
+            formData.append('trust', trust);
+            formData.append('user_token', this.userToken);
+
+            fetch(this.ajaxUrls.resolveConflict, { method: 'POST', body: formData })
+                .then(r => r.json())
+                .then(json => {
+                    this.isResolving = false;
+                    if (json.success) {
+                        this.showAlert('success', json.message || 'Конфликт успешно решен');
+                        this.conflictsList = json.conflicts || this.conflictsList.filter(c => c.code !== item.code);
+                        this.conflictsCount = typeof json.remaining_count !== 'undefined' ? json.remaining_count : this.conflictsList.length;
+                        this.selectedConflicts = this.selectedConflicts.filter(code => code !== item.code);
+                    } else if (json.error) {
+                        this.showAlert('danger', json.error);
+                    }
+                })
+                .catch(err => {
+                    this.isResolving = false;
+                    this.showAlert('danger', 'Ошибка: ' + err);
+                });
+        },
+
+        resolveAll(trust) {
+            if (!confirm(trust === 'file' ? 'Вы уверены, что хотите доверять modules.json для ВСЕХ модулей?' : 'Вы уверены, что хотите доверять базе данных для ВСЕХ модулей?')) {
+                return;
+            }
+
+            this.isResolving = true;
+            const formData = new FormData();
+            formData.append('trust', trust);
+            formData.append('user_token', this.userToken);
+
+            fetch(this.ajaxUrls.resolveAllConflicts, { method: 'POST', body: formData })
+                .then(r => r.json())
+                .then(json => {
+                    this.isResolving = false;
+                    if (json.success) {
+                        this.showAlert('success', 'Все конфликты успешно разрешены');
+                        this.conflictsList = json.conflicts || [];
+                        this.conflictsCount = typeof json.remaining_count !== 'undefined' ? json.remaining_count : 0;
+                        this.selectedConflicts = [];
+                    } else if (json.error) {
+                        this.showAlert('danger', json.error);
+                    }
+                })
+                .catch(err => {
+                    this.isResolving = false;
+                    this.showAlert('danger', 'Ошибка: ' + err);
+                });
+        },
+
+        resolveSelected() {
+            if (this.selectedConflicts.length === 0) return;
+
+            this.isResolving = true;
+            const formData = new FormData();
+            this.selectedConflicts.forEach(code => {
+                const trust = this.trustChoices[code] || 'file';
+                formData.append('resolutions[' + code + ']', trust);
+            });
+            formData.append('user_token', this.userToken);
+
+            fetch(this.ajaxUrls.resolveAllConflicts, { method: 'POST', body: formData })
+                .then(r => r.json())
+                .then(json => {
+                    this.isResolving = false;
+                    if (json.success) {
+                        this.showAlert('success', 'Выбранные конфликты успешно разрешены');
+                        this.conflictsList = json.conflicts || this.conflictsList.filter(c => !this.selectedConflicts.includes(c.code));
+                        this.conflictsCount = typeof json.remaining_count !== 'undefined' ? json.remaining_count : this.conflictsList.length;
+                        this.selectedConflicts = [];
+                    } else if (json.error) {
+                        this.showAlert('danger', json.error);
+                    }
+                })
+                .catch(err => {
+                    this.isResolving = false;
+                    this.showAlert('danger', 'Ошибка: ' + err);
+                });
         },
 
         get filteredModules() {

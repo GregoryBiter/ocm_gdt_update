@@ -197,6 +197,18 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
         $data['newest_url'] = $this->buildUrl(self::PATH_INSTALL . '/newest');
         $data['search_url'] = $this->buildUrl(self::PATH_INSTALL . '/search');
         $data['installed_url'] = $this->buildUrl(self::PATH_INSTALL . '/installed');
+        $data['conflicts_url'] = $this->buildUrl(self::PATH_INSTALL . '/conflicts');
+
+        // Проверка конфликтов версий между modules.json и БД/config
+        try {
+            $conflictService = $this->getServiceFactory()->getConflictService();
+            $conflicts = $conflictService->getConflicts();
+            $data['conflicts_count'] = count($conflicts);
+            $data['has_conflicts'] = !empty($conflicts);
+        } catch (\Throwable $e) {
+            $data['conflicts_count'] = 0;
+            $data['has_conflicts'] = false;
+        }
 
         $data['user_token'] = $this->session->data['user_token'] ?? '';
 
@@ -613,5 +625,134 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
 
         $this->jsonResponse($json);
         return;
+    }
+
+    /**
+     * Страница решения конфликтов версий между modules.json и БД/config
+     */
+    public function conflicts()
+    {
+        $this->load->language(self::PATH_INSTALL);
+
+        $this->document->setTitle($this->trans('heading_title') . ' - ' . $this->trans('text_conflict_resolution'));
+
+        $data = $this->getCommonData();
+        $data['current_page'] = 'conflicts';
+        $data['page_title'] = $this->trans('text_conflict_resolution');
+        $data['page_description'] = $this->trans('text_conflict_page_desc');
+
+        // AJAX URLs для страницы конфликтов
+        $data['resolve_conflict_url'] = html_entity_decode($this->buildUrl(self::PATH_INSTALL . '/resolveConflict'));
+        $data['resolve_all_conflicts_url'] = html_entity_decode($this->buildUrl(self::PATH_INSTALL . '/resolveAllConflicts'));
+        $data['get_conflicts_url'] = html_entity_decode($this->buildUrl(self::PATH_INSTALL . '/getConflictsJson'));
+
+        try {
+            $conflictService = $this->getServiceFactory()->getConflictService();
+            $data['conflicts'] = $conflictService->getConflicts();
+        } catch (\Throwable $e) {
+            LoggerService::error('Error loading conflicts: ' . $e->getMessage(), 'ControllerExtensionModuleGdtInstallModules');
+            $data['conflicts'] = [];
+            $data['conflict_error'] = $e->getMessage();
+        }
+
+        $data = array_merge($data, $this->layout());
+
+        $this->render(self::PATH_INSTALL, $data);
+    }
+
+    /**
+     * AJAX: Получение актуального списка конфликтов
+     */
+    public function getConflictsJson()
+    {
+        try {
+            $conflictService = $this->getServiceFactory()->getConflictService();
+            $conflicts = $conflictService->getConflicts();
+            $this->jsonResponse([
+                'success' => true,
+                'conflicts' => $conflicts,
+                'count' => count($conflicts)
+            ]);
+        } catch (\Throwable $e) {
+            $this->jsonResponse(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * AJAX: Решение одного конфликта
+     */
+    public function resolveConflict()
+    {
+        try {
+            $hasPermission = $this->user->hasPermission('modify', self::PATH_INSTALL) || $this->user->hasPermission('modify', self::PATH_UPDATER);
+            if (!$hasPermission) {
+                throw new Exception($this->trans('error_permission'));
+            }
+
+            $code = $this->getPostData('code');
+            $trust = $this->getPostData('trust'); // 'file' или 'db'
+
+            if (empty($code)) {
+                $this->jsonResponse(['error' => $this->trans('error_code_not_found')]);
+                return;
+            }
+
+            if (!in_array($trust, ['file', 'db'], true)) {
+                $this->jsonResponse(['error' => 'Неверный выбор источника: укажите file или db']);
+                return;
+            }
+
+            $conflictService = $this->getServiceFactory()->getConflictService();
+            $result = $conflictService->resolveConflict($code, $trust);
+
+            // Получаем обновленный список конфликтов
+            $remaining = $conflictService->getConflicts();
+            $result['remaining_count'] = count($remaining);
+            $result['conflicts'] = $remaining;
+
+            $this->jsonResponse($result);
+        } catch (\Throwable $e) {
+            $this->jsonResponse(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * AJAX: Массовое решение конфликтов
+     */
+    public function resolveAllConflicts()
+    {
+        try {
+            $hasPermission = $this->user->hasPermission('modify', self::PATH_INSTALL) || $this->user->hasPermission('modify', self::PATH_UPDATER);
+            if (!$hasPermission) {
+                throw new Exception($this->trans('error_permission'));
+            }
+
+            $trust = $this->getPostData('trust'); // 'file' или 'db'
+            $resolutions = $this->getPostData('resolutions');
+
+            $conflictService = $this->getServiceFactory()->getConflictService();
+
+            if (!empty($trust) && in_array($trust, ['file', 'db'], true)) {
+                $conflicts = $conflictService->getConflicts();
+                $items = [];
+                foreach ($conflicts as $c) {
+                    $items[$c['code']] = $trust;
+                }
+                $result = $conflictService->resolveBatch($items);
+            } elseif (!empty($resolutions) && is_array($resolutions)) {
+                $result = $conflictService->resolveBatch($resolutions);
+            } else {
+                $this->jsonResponse(['error' => 'Параметры для решения конфликтов не переданы']);
+                return;
+            }
+
+            $remaining = $conflictService->getConflicts();
+            $result['remaining_count'] = count($remaining);
+            $result['conflicts'] = $remaining;
+
+            $this->jsonResponse($result);
+        } catch (\Throwable $e) {
+            $this->jsonResponse(['error' => $e->getMessage()]);
+        }
     }
 }
