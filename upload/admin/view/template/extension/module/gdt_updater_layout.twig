@@ -765,16 +765,16 @@
 <script type="text/javascript"><!--
 // URL-адреса для AJAX запросов
 var ajaxUrls = {
-    settings: '{{ settings_url }}',
-    saveSettings: '{{ save_settings_url }}',
-    checkUpdates: '{{ check_updates }}',
-    toggleAutoUpdate: '{{ toggle_auto_update_url }}',
-    deleteMultiple: '{{ delete_multiple_url }}',
-    getAvailableModules: '{{ get_available_modules_url }}',
-    installModule: '{{ install_module_url }}'
+    settings: {{ settings_url|json_encode(15)|raw }},
+    saveSettings: {{ save_settings_url|json_encode(15)|raw }},
+    checkUpdates: {{ check_updates|json_encode(15)|raw }},
+    toggleAutoUpdate: {{ toggle_auto_update_url|json_encode(15)|raw }},
+    deleteMultiple: {{ delete_multiple_url|json_encode(15)|raw }},
+    getAvailableModules: {{ get_available_modules_url|json_encode(15)|raw }},
+    installModule: {{ install_module_url|json_encode(15)|raw }}
 };
 
-var userToken = '{{ user_token }}';
+var userToken = {{ user_token|json_encode(15)|raw }};
 
 // Функция для отображения уведомлений
 function showAlert(type, message) {

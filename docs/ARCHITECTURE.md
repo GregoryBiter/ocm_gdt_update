@@ -135,3 +135,15 @@ $modules = $moduleService->getInstalledModules();
 - [ ] Реалізувати систему подій (events)
 - [ ] Додати можливість rollback при невдалому оновленні
 - [ ] Інтеграція з Composer для залежностей
+
+
+## Installation compatibility (0.2.1)
+
+- Legacy `gdt_modules` records are imported once, including when upgrading an existing registry. Existing JSON versions are preserved; invalid JSON is never replaced. `legacy_gdt_imported` records completion of the migration.
+- Package JSON is read before files are moved or scripts run. Root metadata, metadata inside `upload/`, a single wrapping directory and UTF-8 BOM are supported. Invalid metadata produces an installation error instead of silently losing the version.
+- Installer history is matched by exact module code, versioned archive names, an explicitly declared controller path, and the modification's installer reference. Known package/server aliases are stored in the registry; the server code is kept separately for update requests.
+- Existing installer IDs are reused. On success, duplicate IDs are consolidated, file paths are merged and modification references are reassigned. Existing file ownership is retained during updates.
+- First installs execute `install.php`; upgrades execute `upgrade.php`. Reinstalling the same known version does not rerun scripts. A nonblocking installation lock prevents simultaneous installs from creating duplicate registrations.
+- `InstallService::repairInstallationRecords($code, $installedMetadata = [])` consolidates historical records without copying files or running scripts. The optional metadata must describe files actually installed, rather than a latest server release. Back up the database and registry before administrative repairs.
+- Equal or older server versions are ignored even if the server labels them `update_available`. Store installation responses report the version saved in the registry.
+- Admin models are obtained from the OpenCart Registry after loading. `Controller::__get()` does not provide `__isset()`. Settings failures are returned as JSON, and admin URLs are decoded and serialized as JavaScript literals.

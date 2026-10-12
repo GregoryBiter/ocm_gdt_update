@@ -21,6 +21,13 @@ class ModuleRegistryServiceTest extends BaseTestCase
     private $table = false;
     private $failImport = false;
     private $savedAuto;
+    private $legacyRows = [];
+    private $legacyTable = false;
+    private $installations = [];
+    private $extensionPaths = [];
+    private $nextInstallId = 1;
+    private $scriptRuns = [];
+
 
     protected function setUp(): void
     {
@@ -34,17 +41,49 @@ class ModuleRegistryServiceTest extends BaseTestCase
             $rows = [];
             if ($sql === 'SHOW TABLES') {
                 $rows = $this->table ? [['table' => DB_PREFIX . 'ocm_modules']] : [];
+                if ($this->legacyTable) {
+                    $rows[] = ['table' => DB_PREFIX . 'gdt_modules'];
+                }
             } elseif (strpos($sql, 'SELECT * FROM `' . DB_PREFIX . 'ocm_modules`') === 0) {
                 if ($this->failImport) {
                     throw new \RuntimeException('database unavailable');
                 }
                 $rows = $this->rows;
+            } elseif (strpos($sql, 'SELECT * FROM `' . DB_PREFIX . 'gdt_modules`') === 0) {
+                $rows = $this->legacyRows;
+            } elseif (strpos($sql, 'SELECT * FROM `' . DB_PREFIX . 'extension_install`') === 0) {
+                $rows = array_values($this->installations);
+            } elseif (strpos($sql, 'SELECT DISTINCT `extension_install_id`') === 0) {
+                foreach ($this->extensionPaths as $id => $paths) {
+                    foreach ($paths as $path) {
+                        if (strpos($sql, "'" . $path . "'") !== false) {
+                            $rows[] = ['extension_install_id' => $id];
+                            break;
+                        }
+                    }
+                }
+            } elseif (strpos($sql, 'SELECT DISTINCT `path`') === 0) {
+                preg_match('/IN \(([^)]+)\)/', $sql, $ids);
+                foreach (explode(',', $ids[1]) as $id) {
+                    foreach ($this->extensionPaths[$id] ?? [] as $path) {
+                        $rows[] = ['path' => $path];
+                    }
+                }
+            } elseif (strpos($sql, 'DELETE FROM `' . DB_PREFIX . 'extension_path`') === 0) {
+                if (preg_match('/IN \(([^)]+)\)/', $sql, $ids)) {
+                    foreach (explode(',', $ids[1]) as $id) {
+                        $this->extensionPaths[$id] = [];
+                    }
+                }
             } elseif (strpos($sql, 'SELECT `file_path`') === 0) {
                 $rows = [['file_path' => 'system/gdt_registry_fixture.txt']];
             }
             return (object)['rows' => $rows, 'row' => $rows[0] ?? [], 'num_rows' => count($rows)];
         });
         $this->registry->shouldReceive('get')->with('db')->andReturn($db);
+        $this->registry->shouldReceive('get')->with('record_script')->andReturn(function ($script) {
+            $this->scriptRuns[] = $script;
+        });
         $load = Mockery::mock('Loader');
         $load->shouldReceive('model')->andReturnNull();
         $load->shouldReceive('controller')->andReturnNull();
@@ -56,8 +95,17 @@ class ModuleRegistryServiceTest extends BaseTestCase
         $config->shouldReceive('set')->andReturnNull();
         $this->registry->shouldReceive('get')->with('config')->andReturn($config);
         $extension = Mockery::mock('Model');
-        $extension->shouldReceive('addExtensionInstall')->andReturn(1);
-        $extension->shouldReceive('addExtensionPath')->andReturnNull();
+        $extension->shouldReceive('addExtensionInstall')->andReturnUsing(function ($filename) {
+            $id = $this->nextInstallId++;
+            $this->installations[$id] = ['extension_install_id' => $id, 'filename' => $filename];
+            return $id;
+        });
+        $extension->shouldReceive('addExtensionPath')->andReturnUsing(function ($id, $path) {
+            $this->extensionPaths[$id][] = $path;
+        });
+        $extension->shouldReceive('deleteExtensionInstall')->andReturnUsing(function ($id) {
+            unset($this->installations[$id]);
+        });
         $this->registry->shouldReceive('get')->with('model_setting_extension')->andReturn($extension);
         $modification = Mockery::mock('Model');
         $modification->shouldReceive('getModificationByCode')->andReturnNull();
@@ -75,6 +123,7 @@ class ModuleRegistryServiceTest extends BaseTestCase
     {
         $this->removeDir($this->dir);
         @unlink(DIR_SYSTEM . 'gdt_registry_fixture.txt');
+        @unlink(dirname(rtrim(DIR_APPLICATION, '/')) . '/opencart-module.json');
         parent::tearDown();
     }
 
@@ -251,7 +300,7 @@ class ModuleRegistryServiceTest extends BaseTestCase
     {
         $this->service->upsert(['code' => 'fixture', 'version' => '1.0.0']);
         $before = file_get_contents($this->path());
-        $archive = $this->zip(['install.php' => '<?php throw new \\RuntimeException("fixture script failed");']);
+        $archive = $this->zip(['upgrade.php' => '<?php throw new \\RuntimeException("fixture script failed");']);
         $result = (new InstallService($this->registry, $this->service))->installModule($archive, 'fixture');
         $this->assertStringContainsString('fixture script failed', $result);
         $this->assertSame($before, file_get_contents($this->path()));
@@ -297,6 +346,7 @@ class ModuleRegistryServiceTest extends BaseTestCase
         file_put_contents(DIR_SYSTEM . 'gdt_registry_fixture.txt', 'old');
         $failing = Mockery::mock(ModuleRegistryService::class);
         $failing->shouldReceive('assertWritable')->once();
+        $failing->shouldReceive('getModuleByCode')->andReturn($this->service->getModuleByCode('fixture'));
         $failing->shouldReceive('upsert')->once()->andThrow(new \RuntimeException('cannot publish registry'));
         $archive = $this->zip(['opencart-module.json' => '{"code":"fixture","version":"2.0.0"}',
             'upload/system/gdt_registry_fixture.txt' => 'new']);
@@ -355,5 +405,142 @@ class ModuleRegistryServiceTest extends BaseTestCase
         $this->assertSame('1.2.3', $modules[0]['installed_version']);
         $this->assertTrue($modules[0]['update_available']);
         $this->assertFalse($modules[1]['installed']);
+    }
+
+    public function testLegacyMigrationKeepsRegistryVersionsAndImportsOnlyOnce()
+    {
+        file_put_contents($this->path(), json_encode(['schema_version' => 1, 'modules' => (object)[
+            'fixture' => ['code' => 'fixture', 'name' => 'Current', 'version' => '3.0.0']
+        ]]));
+        $this->legacyTable = true;
+        $this->legacyRows = [
+            ['code' => 'fixture', 'name' => 'Old', 'version' => '1.0.0'],
+            ['code' => 'legacy', 'name' => 'Legacy', 'version' => '2.4.0', 'status' => 1],
+            ['code' => 'disabled', 'name' => 'Disabled', 'version' => '1.0.0', 'status' => 0],
+        ];
+        $this->assertSame('3.0.0', $this->service->getModuleByCode('fixture')['version']);
+        $this->assertSame('2.4.0', $this->service->getModuleByCode('legacy')['version']);
+        $this->assertNull($this->service->getModuleByCode('disabled'));
+        $before = $this->queries;
+        $this->legacyRows[] = ['code' => 'later', 'name' => 'Later', 'version' => '9.0.0'];
+        $this->assertNull($this->service->getModuleByCode('later'));
+        $this->assertSame($before, $this->queries);
+    }
+
+    /** @dataProvider metadataLocations */
+    public function testPackageMetadataIsReadBeforeFilesMove($metadataPath, $payloadPath)
+    {
+        $before = glob(DIR_UPLOAD . 'tmp-*');
+        $archive = $this->zip([
+            $metadataPath => "\xEF\xBB\xBF" . json_encode(['code' => 'fixture', 'version' => 'v2.4.1']),
+            $payloadPath => 'new',
+        ]);
+        $this->assertTrue((new InstallService($this->registry, $this->service))->installModule($archive, 'fixture', ['version' => '99.0.0']));
+        $this->assertSame('2.4.1', $this->service->getModuleByCode('fixture')['version']);
+        $this->assertSame('new', file_get_contents(DIR_SYSTEM . 'gdt_registry_fixture.txt'));
+        $this->assertCount(1, $this->installations);
+        $this->assertSame($before, glob(DIR_UPLOAD . 'tmp-*'));
+    }
+
+    public static function metadataLocations()
+    {
+        return [
+            ['opencart-module.json', 'upload/system/gdt_registry_fixture.txt'],
+            ['upload/opencart-module.json', 'upload/system/gdt_registry_fixture.txt'],
+            ['updater-release/opencart-module.json', 'updater-release/upload/system/gdt_registry_fixture.txt'],
+        ];
+    }
+
+    public function testInvalidMetadataFailsBeforeRegistrationOrFileChanges()
+    {
+        file_put_contents(DIR_SYSTEM . 'gdt_registry_fixture.txt', 'old');
+        $archive = $this->zip(['opencart-module.json' => '{invalid', 'upload/system/gdt_registry_fixture.txt' => 'new']);
+        $result = (new InstallService($this->registry, $this->service))->installModule($archive, 'fixture');
+        $this->assertStringContainsString('Invalid module metadata', $result);
+        $this->assertSame([], $this->installations);
+        $this->assertNull($this->service->getModuleByCode('fixture'));
+        $this->assertSame('old', file_get_contents(DIR_SYSTEM . 'gdt_registry_fixture.txt'));
+    }
+
+    public function testInstallAndUpgradeScriptsRunOnlyForTheirLifecycle()
+    {
+        $installer = new InstallService($this->registry, $this->service);
+        foreach (['1.0.0', '2.0.0', '2.0.0'] as $version) {
+            $archive = $this->zip([
+                'opencart-module.json' => json_encode(['code' => 'fixture', 'version' => $version]),
+                'install.php' => '<?php $run = $registry->get("record_script"); $run("install");',
+                'upgrade.php' => '<?php $run = $registry->get("record_script"); $run("upgrade");',
+            ]);
+            $this->assertTrue($installer->installModule($archive, 'fixture'));
+        }
+        $this->assertSame(['install', 'upgrade'], $this->scriptRuns);
+        $this->assertCount(1, $this->installations);
+        $this->assertSame('2.0.0', $this->service->getModuleByCode('fixture')['version']);
+    }
+
+    public function testLegacyFilenameDuplicatesReuseControllerIdentityAndPreservePaths()
+    {
+        $controller = 'extension/module/gdt_updater';
+        $path = 'admin/controller/' . $controller . '.php';
+        $this->installations = [
+            33 => ['extension_install_id' => 33, 'filename' => 'ocm_gdt_update-v0.1.3.ocmod.zip'],
+            56 => ['extension_install_id' => 56, 'filename' => 'ocm_gdt_update-v0.1.3.ocmod.zip'],
+            70 => ['extension_install_id' => 70, 'filename' => 'other.ocmod.zip'],
+        ];
+        $this->extensionPaths = [33 => [$path, 'system/old_updater_file.php'], 56 => [$path], 70 => ['system/other.php']];
+        $archive = $this->zip([
+            'opencart-module.json' => json_encode(['code' => 'gdt_updater', 'version' => '0.2.0', 'controller' => $controller]),
+            'upload/' . $path => '<?php // fixture',
+            'install.php' => '<?php throw new \RuntimeException("must not reinstall");',
+        ]);
+        try {
+            $installer = new InstallService($this->registry, $this->service);
+            $this->assertTrue($installer->installModule($archive, 'ocm_updater'));
+            $this->assertSame([33, 70], array_keys($this->installations));
+            $this->assertContains('system/old_updater_file.php', $this->extensionPaths[33]);
+            $this->assertSame(['system/other.php'], $this->extensionPaths[70]);
+            $record = $this->service->getModuleByCode('gdt_updater');
+            $this->assertSame('ocm_updater', $record['code']);
+            $this->assertSame('0.2.0', $record['version']);
+            $this->assertSame(33, $record['extension_install_id']);
+            $this->assertCount(1, $this->service->getInstalledModules());
+            $this->assertTrue($installer->installModule($archive, 'ocm_updater'));
+            $this->assertCount(2, $this->installations);
+            $this->assertSame(count($this->extensionPaths[33]), count(array_unique($this->extensionPaths[33])));
+        } finally {
+            @unlink(DIR_APPLICATION . 'controller/' . $controller . '.php');
+        }
+    }
+
+    public function testEqualOrOlderServerReleaseDoesNotRequireUpdate()
+    {
+        $service = new \Gbitstudio\Modules\Services\UpdateService($this->registry);
+        $parse = new \ReflectionMethod($service, 'parseUpdateResponse');
+        foreach (['1.0.0', '0.9.0', 'v1.0.0'] as $version) {
+            $response = ['response' => json_encode(['success' => true, 'result' => ['status' => 'update_available', 'version' => $version]])];
+            $this->assertFalse($parse->invoke($service, $response, ['code' => 'fixture', 'version' => '1.0.0']));
+        }
+        $response['response'] = json_encode(['success' => true, 'result' => ['status' => 'update_available', 'version' => '2.0.0']]);
+        $this->assertSame('2.0.0', $parse->invoke($service, $response, ['code' => 'fixture', 'version' => '1.0.0'])['version']);
+    }
+
+    public function testExistingDuplicateRegistrationsCanBeRepairedWithoutReinstalling()
+    {
+        $this->service->upsert(['code' => 'fixture', 'version' => '1.5.0']);
+        $this->installations = [
+            5 => ['extension_install_id' => 5, 'filename' => 'fixture.ocmod.zip'],
+            8 => ['extension_install_id' => 8, 'filename' => 'fixture-v1.5.0.ocmod.zip'],
+            9 => ['extension_install_id' => 9, 'filename' => 'other.ocmod.zip'],
+        ];
+        $this->extensionPaths = [5 => ['system/a.php'], 8 => ['system/b.php', 'system/a.php'], 9 => ['system/other.php']];
+        $installer = new InstallService($this->registry, $this->service);
+        $result = $installer->repairInstallationRecords('fixture');
+        $this->assertSame(1, $result['merged']);
+        $this->assertSame([5, 9], array_keys($this->installations));
+        $this->assertSame(['system/a.php', 'system/b.php'], $this->extensionPaths[5]);
+        $this->assertSame('1.5.0', $this->service->getModuleByCode('fixture')['version']);
+        $this->assertSame(5, $this->service->getModuleByCode('fixture')['extension_install_id']);
+        $this->assertSame(0, $installer->repairInstallationRecords('fixture')['merged']);
+        $this->assertSame([], $this->scriptRuns);
     }
 }

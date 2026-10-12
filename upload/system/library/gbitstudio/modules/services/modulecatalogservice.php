@@ -140,10 +140,13 @@ class ModuleCatalogService
         $installed_map = [];
         foreach ($installed_modules as $installed) {
             if (isset($installed['code'])) {
-                $installed_map[$installed['code']] = [
+                $entry = [
                     'version' => isset($installed['version']) ? $installed['version'] : '0.0.0',
                     'name' => isset($installed['name']) ? $installed['name'] : $installed['code']
                 ];
+                foreach (array_unique(array_merge([$installed['code'], $installed['server_code'] ?? $installed['code']], $installed['aliases'] ?? [])) as $code) {
+                    $installed_map[$code] = $entry;
+                }
             }
         }
 

@@ -84,7 +84,7 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
                 $error = isset($this->error['warning']) ? $this->error['warning'] : $this->trans(self::MODULE_PATH . '.text_validation_failed');
                 $this->jsonResponse(['error' => $error]);
             }
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             $this->handleException($e);
         }
     }
@@ -263,14 +263,14 @@ class ControllerExtensionModuleGdtUpdater extends GDTBaseController
             // 4. Процесс загрузки и установки
             LoggerService::write("GDT Updater: Starting update for {$code} (v{$module['version']} -> v{$update_info['version']})");
 
-            $download_result = $this->getServiceFactory()->getUpdateService()->downloadModule($server_url, $module['code'], $update_info['version'], $api_key);
+            $download_result = $this->getServiceFactory()->getUpdateService()->downloadModule($server_url, $module['server_code'] ?? $module['code'], $update_info['version'], $api_key);
 
             if (empty($download_result['success'])) {
                 throw new Exception($download_result['error'] ?? 'Ошибка загрузки модуля');
             }
 
             $update_info['_downloaded_version'] = $download_result['version'] ?? '';
-            $result = $this->getServiceFactory()->getInstallService()->installModule($download_result['file_path'], $module['code'], $update_info);
+            $result = $this->getServiceFactory()->getInstallService()->installModule($download_result['file_path'], $module['server_code'] ?? $module['code'], $update_info);
 
             if ($result !== true) {
                 throw new Exception($result);

@@ -104,3 +104,5 @@ $_['text_delete_multiple_confirm'] = 'Are you sure you want to delete the select
 $_['text_delete_multiple_success'] = 'Successfully deleted modules: %d (%s)';
 $_['text_delete_partial_success'] = 'Deleted modules: %d (%s). Errors: %s';
 $_['error_server_auth']      = 'Update server authentication error: %s';
+
+$_['warning_version_unknown'] = 'The module was installed, but its package version is unknown. Automatic updates are disabled.';

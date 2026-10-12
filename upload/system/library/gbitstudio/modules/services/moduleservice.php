@@ -24,7 +24,7 @@ class ModuleService
         $modules = [];
         foreach ($this->moduleRegistry->getInstalledModules() as $record) {
             $record = (array)$record;
-            $record['paths'] = $this->getModulePaths($record['code']);
+            $record['paths'] = $this->getModulePaths($record['code'], ($record['source'] ?? '') === 'legacy_gdt');
             $modules[] = $this->formatModuleData($record, $record['code']);
         }
         return $modules;
@@ -36,23 +36,25 @@ class ModuleService
         if ($record === null) {
             return null;
         }
-        $record['paths'] = $this->getModulePaths($code);
-        return $this->formatModuleData($record, $code);
+        $record['paths'] = $this->getModulePaths($record['code'], ($record['source'] ?? '') === 'legacy_gdt');
+        return $this->formatModuleData($record, $record['code']);
     }
 
-    private function getModulePaths($code)
+    private function getModulePaths($code, $legacy = false)
     {
         $paths = [];
 
         try {
             $table_query = $this->db->query("SHOW TABLES LIKE '" . DB_PREFIX . "ocm_module_files'");
-            if ($table_query->num_rows == 0) {
-                return $paths;
+            if ($table_query->num_rows > 0) {
+                $result = $this->db->query("SELECT `file_path` FROM `" . DB_PREFIX . "ocm_module_files` WHERE `module_code` = '" . $this->db->escape($code) . "' AND `removed_at` IS NULL");
+                foreach ($result->rows as $row) {
+                    $paths[] = $row['file_path'];
+                }
             }
-
-            $result = $this->db->query("SELECT `file_path` FROM `" . DB_PREFIX . "ocm_module_files` WHERE `module_code` = '" . $this->db->escape($code) . "' AND `removed_at` IS NULL");
-            foreach ($result->rows as $row) {
-                $paths[] = $row['file_path'];
+            if (empty($paths) && $legacy) {
+                $result = $this->db->query("SELECT `paths` FROM `" . DB_PREFIX . "gdt_modules` WHERE `code` = '" . $this->db->escape($code) . "' LIMIT 1");
+                $paths = json_decode($result->row['paths'] ?? '[]', true) ?: [];
             }
         } catch (\Exception $e) {
             LoggerService::warning('Error reading module files: ' . $e->getMessage(), 'ModuleService');
@@ -67,6 +69,8 @@ class ModuleService
 
         return [
             'code' => $data['code'] ?? $code,
+            'aliases' => $data['aliases'] ?? [],
+            'server_code' => $data['server_code'] ?? $data['code'] ?? $code,
             'name' => $data['module_name'] ?? $data['name'] ?? $code,
             'module_name' => $data['module_name'] ?? $data['name'] ?? $code,
             'version' => $version,

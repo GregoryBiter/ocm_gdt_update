@@ -653,9 +653,9 @@
 <script type="text/javascript"><!--
 function gdtInstallModules() {
     return {
-        currentPage: '{{ current_page|default("") }}',
+        currentPage: {{ current_page|default("")|json_encode(15)|raw }},
         pageTitle: '{{ page_title|default("Модули") }}',
-        userToken: '{{ user_token }}',
+        userToken: {{ user_token|json_encode(15)|raw }},
         modules: {% if current_page == 'installed' %}{{ modules|json_encode }}{% else %}[]{% endif %},
         conflictsCount: {{ conflicts_count|default(0) }},
         conflictsList: {% if current_page == 'conflicts' %}{{ conflicts|json_encode }}{% else %}[]{% endif %},
@@ -686,20 +686,20 @@ function gdtInstallModules() {
             isMultiple: false
         },
         ajaxUrls: {
-            getFeatured:   '{{ get_modules_url|default("") }}',
-            getPopular:    '{{ get_modules_url|default("") }}',
-            getNewest:     '{{ get_modules_url|default("") }}',
-            getStore:      '{{ get_modules_url|default("") }}',
-            search:        '{{ search_modules_url|default("") }}',
-            install:       '{{ install_module_url|default("") }}',
-            settings:      '{{ settings_url|default("") }}',
-            saveSettings:  '{{ save_settings_url|default("") }}',
-            checkUpdates:  '{{ check_updates_url|default("") }}',
-            toggleAutoUpdate: '{{ toggle_auto_update_url|default("") }}',
-            deleteMultiple: '{{ delete_multiple_url|default("") }}',
-            resolveConflict: '{{ resolve_conflict_url|default("") }}',
-            resolveAllConflicts: '{{ resolve_all_conflicts_url|default("") }}',
-            getConflicts:  '{{ get_conflicts_url|default("") }}'
+            getFeatured:   {{ get_modules_url|default("")|json_encode(15)|raw }},
+            getPopular:    {{ get_modules_url|default("")|json_encode(15)|raw }},
+            getNewest:     {{ get_modules_url|default("")|json_encode(15)|raw }},
+            getStore:      {{ get_modules_url|default("")|json_encode(15)|raw }},
+            search:        {{ search_modules_url|default("")|json_encode(15)|raw }},
+            install:       {{ install_module_url|default("")|json_encode(15)|raw }},
+            settings:      {{ settings_url|default("")|json_encode(15)|raw }},
+            saveSettings:  {{ save_settings_url|default("")|json_encode(15)|raw }},
+            checkUpdates:  {{ check_updates_url|default("")|json_encode(15)|raw }},
+            toggleAutoUpdate: {{ toggle_auto_update_url|default("")|json_encode(15)|raw }},
+            deleteMultiple: {{ delete_multiple_url|default("")|json_encode(15)|raw }},
+            resolveConflict: {{ resolve_conflict_url|default("")|json_encode(15)|raw }},
+            resolveAllConflicts: {{ resolve_all_conflicts_url|default("")|json_encode(15)|raw }},
+            getConflicts:  {{ get_conflicts_url|default("")|json_encode(15)|raw }}
         },
 
         init() {
@@ -949,8 +949,11 @@ function gdtInstallModules() {
                     if (json.success) {
                         this.showAlert('success', json.success);
                         module.installed = true;
-                        module.installed_version = module.version;
-                        module.update_available = false;
+                        module.installed_version = json.installed_version || '0.0.0';
+                        module.update_available = !!json.update_available;
+                        if (json.warning) {
+                            this.showAlert('warning', json.warning);
+                        }
                     } else if (json.error) {
                         this.showAlert('danger', json.error);
                     }

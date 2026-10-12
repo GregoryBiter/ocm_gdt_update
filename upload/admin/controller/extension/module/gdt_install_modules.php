@@ -558,6 +558,7 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
 
         try {
             // 3. Получение URL сервера
+            $this->validatePermission();
             $server_url = $this->getServerUrl();
             if (empty($server_url)) {
                 throw new Exception($this->trans('error_server_not_configured'));
@@ -618,7 +619,17 @@ class ControllerExtensionModuleGdtInstallModules extends GDTBaseController
             LoggerService::write("GDT Install Modules: Successfully installed module {$module_code}");
 
             $json['success'] = sprintf($this->trans('text_install_success'), $module_code);
-        } catch (Exception $e) {
+            $installed = $this->getServiceFactory()->getModuleService()->getModuleByCode($module_code);
+            $json['installed_version'] = $installed['version'];
+            $json['update_available'] = !empty($server_module_info['version']) && version_compare(
+                ltrim($server_module_info['version'], 'vV'),
+                $installed['version'],
+                '>'
+            );
+            if ($installed['version'] === '0.0.0') {
+                $json['warning'] = $this->trans(self::PATH_UPDATER . '.warning_version_unknown');
+            }
+        } catch (\Throwable $e) {
             $json['error'] = $e->getMessage();
             LoggerService::write("GDT Install Modules error: " . $e->getMessage());
         }

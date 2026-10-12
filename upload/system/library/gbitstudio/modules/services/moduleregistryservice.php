@@ -26,7 +26,15 @@ class ModuleRegistryService
     public function getModuleByCode($code)
     {
         return $this->withLock(function (&$data) use ($code) {
-            return isset($data->modules->{$code}) ? (array)$data->modules->{$code} : null;
+            if (isset($data->modules->{$code})) {
+                return (array)$data->modules->{$code};
+            }
+            foreach ($data->modules as $record) {
+                if (in_array($code, $record->aliases ?? [], true)) {
+                    return (array)$record;
+                }
+            }
+            return null;
         });
     }
 
@@ -49,6 +57,13 @@ class ModuleRegistryService
             $record = $this->normalize($module);
             $record['installed_at'] = $previous['installed_at'] ?? $record['installed_at'];
             $record['updated_at'] = date('Y-m-d H:i:s');
+            foreach ($data->modules as $otherCode => $other) {
+                if ($otherCode !== $code && in_array($otherCode, $record['aliases'], true)) {
+                    $record['installed_at'] = min($record['installed_at'], $other->installed_at ?? $record['installed_at']);
+                    $record['aliases'] = array_values(array_unique(array_merge($record['aliases'], $other->aliases ?? [])));
+                    unset($data->modules->{$otherCode});
+                }
+            }
             $data->modules->{$code} = (object)$record;
             $this->write($data);
             return $record;
@@ -80,6 +95,10 @@ class ModuleRegistryService
             clearstatcache(true, $this->path);
             if (file_exists($this->path)) {
                 $data = $this->read();
+                if (empty($data->legacy_gdt_imported)) {
+                    $this->importLegacy($data, $this->tableNames());
+                    $this->write($data);
+                }
             } else {
                 $data = $this->import();
                 $this->write($data);
@@ -119,18 +138,10 @@ class ModuleRegistryService
     {
         $data = (object)['schema_version' => 1, 'modules' => new \stdClass()];
         // Exact table lookup: LIKE would treat underscores in the prefix as wildcards.
-        $tables = $this->db->query("SHOW TABLES");
-        $exists = false;
-        foreach ($tables->rows as $row) {
-            if (in_array(DB_PREFIX . 'ocm_modules', $row, true)) {
-                $exists = true;
-                break;
-            }
-        }
-        if (!$exists) {
-            return $data;
-        }
-        $result = $this->db->query("SELECT * FROM `" . DB_PREFIX . "ocm_modules` WHERE `status` = 1");
+        $tables = $this->tableNames();
+        $result = in_array(DB_PREFIX . 'ocm_modules', $tables, true)
+            ? $this->db->query("SELECT * FROM `" . DB_PREFIX . "ocm_modules` WHERE `status` = 1")
+            : (object)['rows' => []];
         foreach ($result->rows as $row) {
             $metadata = json_decode($row['metadata_json'], true);
             $metadata = is_array($metadata) ? $metadata : [];
@@ -144,7 +155,43 @@ class ModuleRegistryService
             }
             $data->modules->{$record['code']} = (object)$record;
         }
+        $this->importLegacy($data, $tables);
         return $data;
+    }
+
+    private function tableNames()
+    {
+        $names = [];
+        foreach ($this->db->query('SHOW TABLES')->rows as $row) {
+            $names = array_merge($names, array_values($row));
+        }
+        return $names;
+    }
+
+    private function importLegacy($data, array $tables)
+    {
+        if (in_array(DB_PREFIX . 'gdt_modules', $tables, true)) {
+            $result = $this->db->query("SELECT * FROM `" . DB_PREFIX . "gdt_modules`");
+            foreach ($result->rows as $row) {
+                if (isset($row['status']) && !(int)$row['status']) {
+                    continue;
+                }
+                $code = $row['code'] ?? '';
+                if ($code === '' || isset($data->modules->{$code})) {
+                    continue;
+                }
+                $metadata = json_decode($row['metadata_json'] ?? $row['metadata'] ?? '{}', true);
+                $metadata = is_array($metadata) ? $metadata : [];
+                $record = $this->normalize(array_merge($metadata, $row, [
+                    'code' => $code,
+                    'version' => $row['installed_version'] ?? $row['version'] ?? '0.0.0',
+                    'source' => 'legacy_gdt',
+                ]));
+                $data->modules->{$code} = (object)$record;
+            }
+        }
+        // One-time migration also applies to registries created before legacy support.
+        $data->legacy_gdt_imported = true;
     }
 
     private function normalize(array $module)
@@ -152,6 +199,10 @@ class ModuleRegistryService
         $code = (string)($module['code'] ?? '');
         return [
             'code' => $code,
+            'aliases' => array_values(array_unique(array_filter((array)($module['aliases'] ?? []), 'is_string'))),
+            'server_code' => (string)($module['server_code'] ?? $code),
+            'extension_install_id' => (int)($module['extension_install_id'] ?? 0),
+            'modification_code' => (string)($module['modification_code'] ?? ''),
             'name' => (string)($module['name'] ?? $module['module_name'] ?? $code),
             'version' => (string)(($module['version'] ?? '') ?: '0.0.0'),
             'description' => (string)($module['description'] ?? ''),

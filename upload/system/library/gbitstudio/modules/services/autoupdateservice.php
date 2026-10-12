@@ -141,14 +141,14 @@ class AutoUpdateService
         try {
             $target_version = isset($update_info['version']) ? $update_info['version'] : (isset($module['version']) ? $module['version'] : '0.0.0');
 
-            $download_result = $this->updateService->downloadModule($server_url, $module['code'], $target_version, $api_key);
+            $download_result = $this->updateService->downloadModule($server_url, $module['server_code'] ?? $module['code'], $target_version, $api_key);
 
             if (!$download_result['success']) {
                 return $download_result['error'] ?? 'Failed to download module';
             }
 
             $update_info['_downloaded_version'] = $download_result['version'] ?? '';
-            $result = $this->installService->installModule($download_result['file_path'], $module['code'], $update_info);
+            $result = $this->installService->installModule($download_result['file_path'], $module['server_code'] ?? $module['code'], $update_info);
 
             if (!empty($download_result['file_path']) && file_exists($download_result['file_path'])) {
                 @unlink($download_result['file_path']);

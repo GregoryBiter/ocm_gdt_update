@@ -336,4 +336,13 @@ class GdtInstallModulesControllerTest extends BaseTestCase
         $this->assertEquals('test_mod', $result['code'] ?? '');
         $this->assertEquals('Test', $result['name'] ?? '');
     }
+
+    public function testAdminUrlsDecodeAmpersandsBeforeUseInJavascript()
+    {
+        $encoded = 'https://example.test/admin/index.php?route=extension/module/gdt_install_modules/store&amp;user_token=test_token_123';
+        $this->url->shouldReceive('link')->once()->andReturn($encoded);
+        $this->response->shouldReceive('redirect')->once()->with(str_replace('&amp;', '&', $encoded), 302);
+        $this->controller->index();
+        $this->assertTrue(true);
+    }
 }

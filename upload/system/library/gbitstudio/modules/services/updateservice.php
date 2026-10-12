@@ -28,7 +28,7 @@ class UpdateService
 
         $url = (new ServerEndpointService($this->registry->get('config')))->build($server_url, 'check');
         $post_data = [
-            'code' => $module['code'],
+            'code' => $module['server_code'] ?? $module['code'],
             'version' => ltrim($module['version'], 'v')
         ];
 
@@ -75,7 +75,7 @@ class UpdateService
         foreach ($modules as $m) {
             if (!empty($m['code'])) {
                 $post_modules[] = [
-                    'code' => $m['code'],
+                    'code' => $m['server_code'] ?? $m['code'],
                     'version' => ltrim($m['version'] ?? '0.0.0', 'v'),
                 ];
             }
@@ -88,8 +88,10 @@ class UpdateService
         if (isset($response_data['response'])) {
             $json = json_decode($response_data['response'], true);
             if (!empty($json['success']) && isset($json['results']) && is_array($json['results'])) {
-                foreach ($json['results'] as $code => $info) {
-                    if (isset($info['status']) && $info['status'] === 'update_available') {
+                foreach ($modules as $module) {
+                    $code = $module['code'];
+                    $info = $json['results'][$module['server_code'] ?? $code] ?? [];
+                    if (isset($info['status']) && $info['status'] === 'update_available' && $this->isNewerVersion($info, $module)) {
                         $results[$code] = $info;
                     } else {
                         $results[$code] = false;
@@ -342,6 +344,15 @@ class UpdateService
      * @param array $module
      * @return array|bool
      */
+    private function isNewerVersion(array $info, array $module)
+    {
+        return !empty($info['version']) && version_compare(
+            ltrim(trim($info['version']), 'vV'),
+            ltrim(trim($module['version'] ?? '0.0.0'), 'vV'),
+            '>'
+        );
+    }
+
     private function parseUpdateResponse($response_data, $module)
     {
         if (isset($response_data['response'])) {
@@ -349,7 +360,7 @@ class UpdateService
 
             if (isset($data['success']) && $data['success'] && isset($data['result'])) {
                 $update_info = $data['result'];
-                if (isset($update_info['status']) && $update_info['status'] == 'update_available') {
+                if (isset($update_info['status']) && $update_info['status'] == 'update_available' && $this->isNewerVersion($update_info, $module)) {
                     return $update_info;
                 }
             }

@@ -4,9 +4,9 @@ namespace Gbitstudio\Modules\Controllers;
 
 use Controller;
 use Exception;
+
 abstract class GDTBaseController extends Controller
 {
-
     /**
      * Get translated text from language.
      * Supports dot-notation for package/route prefix (e.g. 'extension/module/gdt_updater.text_success').
@@ -148,7 +148,7 @@ abstract class GDTBaseController extends Controller
             $query[$k] = $v;
         }
         $queryString = http_build_query($query);
-        return $this->url->link($route, $queryString, $secure);
+        return html_entity_decode($this->url->link($route, $queryString, $secure), ENT_QUOTES, 'UTF-8');
     }
 
     /**
@@ -174,7 +174,12 @@ abstract class GDTBaseController extends Controller
     {
         $this->load->model($modelRoute);
         $modelProp = 'model_' . str_replace('/', '_', $modelRoute);
-        return isset($this->{$modelProp}) ? $this->{$modelProp} : null;
+        // OpenCart Controller implements __get(), but not __isset().
+        $model = $this->registry->get($modelProp);
+        if ($model === null) {
+            throw new \RuntimeException('Could not load model: ' . $modelRoute);
+        }
+        return $model;
     }
 
     /**
@@ -196,7 +201,7 @@ abstract class GDTBaseController extends Controller
      *
      * @param Exception $e
      */
-    protected function handleException(Exception $e)
+    protected function handleException(\Throwable $e)
     {
         $this->jsonResponse(['error' => $e->getMessage()]);
     }

@@ -14,6 +14,7 @@ class InstallService
     private $db;
     private $moduleRegistry;
     private $pendingModule;
+    private $packageMetadata;
 
     public function __construct(\Registry $registry, $moduleRegistry = null)
     {
@@ -36,9 +37,19 @@ class InstallService
         $backup_dir = null;
         $this->pendingModule = null;
         $maintenanceStarted = false;
+        $extract_dir = null;
+        $temp_file = null;
+        $extension_install_id = null;
+        $newInstallation = false;
+        $installationLock = null;
+        $extract_base = null;
 
         try {
             $this->moduleRegistry->assertWritable();
+            $installationLock = fopen($this->getUploadDirectory() . '.gdt_install.lock', 'c');
+            if (!$installationLock || !flock($installationLock, LOCK_EX | LOCK_NB)) {
+                throw new \RuntimeException('Another module installation is already running');
+            }
             $this->setMaintenanceMode(true);
             $maintenanceStarted = true;
             if (!file_exists($zip_file_path)) {
@@ -56,16 +67,52 @@ class InstallService
             $this->registry->get('load')->model('setting/extension');
             $model = $this->registry->get('model_setting_extension');
 
-            $filename = !empty($module_code) ? $module_code . '.ocmod.zip' : basename($zip_file_path);
-            $extension_install_id = $model->addExtensionInstall($filename);
-
-            LoggerService::write('GDT Install Service: Created extension_install_id: ' . $extension_install_id);
-
-            // Етап 1: Розпакування
+            // Read identity and version before moving upload/ or running package scripts.
             $extract_dir = $this->unzipModule($temp_file, $install_token, $upload_dir);
-            if (!is_string($extract_dir)) {
-                throw new \Exception('Unzip error: ' . $extract_dir);
+            $extract_base = $extract_dir;
+            $extract_dir = $this->packageRoot($extract_dir);
+            $this->packageMetadata = $this->readPackageMetadata($extract_dir, $module_code, $server_module_info);
+            $module_code = $this->packageMetadata['code'];
+            $registration = $this->findExtensionInstalls($this->packageMetadata, $extract_dir);
+            $existing = $this->moduleRegistry->getModuleByCode($module_code);
+            if ($existing === null) {
+                foreach ($this->packageMetadata['aliases'] as $alias) {
+                    $existing = $this->moduleRegistry->getModuleByCode($alias);
+                    if ($existing !== null) {
+                        break;
+                    }
+                }
             }
+            if ($existing === null && !empty($this->packageMetadata['controller'])) {
+                $table = $this->db->query("SHOW TABLES LIKE '" . DB_PREFIX . "ocm_module_files'");
+                if ($table->num_rows > 0) {
+                    $controllerPath = 'admin/controller/' . $this->packageMetadata['controller'] . '.php';
+                    $owners = $this->db->query("SELECT DISTINCT `module_code` FROM `" . DB_PREFIX . "ocm_module_files`
+                        WHERE `file_path` = '" . $this->db->escape($controllerPath) . "' AND `removed_at` IS NULL");
+                    if (count($owners->rows) > 1) {
+                        throw new \RuntimeException('Several registered modules own the package controller; resolve the registry conflict first');
+                    }
+                    if ($owners->rows) {
+                        $existing = $this->moduleRegistry->getModuleByCode($owners->rows[0]['module_code']);
+                    }
+                }
+            }
+            $isUpdate = $existing !== null || !empty($registration);
+            if ($existing !== null) {
+                $module_code = $existing['code'];
+                $this->packageMetadata['code'] = $module_code;
+                $this->packageMetadata['aliases'] = array_values(array_unique(array_merge(
+                    $existing['aliases'] ?? [],
+                    $this->packageMetadata['aliases']
+                )));
+            }
+            $newInstallation = empty($registration);
+            $extension_install_id = $newInstallation
+                ? $model->addExtensionInstall($module_code . '.ocmod.zip')
+                : (int)$registration[0]['extension_install_id'];
+            $this->packageMetadata['extension_install_id'] = $extension_install_id;
+            $this->packageMetadata['_package_hash'] = sha1_file($zip_file_path);
+            LoggerService::info('Using extension_install_id: ' . $extension_install_id, 'InstallService');
 
             // Етап 2: Створення тимчасового бэкапу існуючих файлів для відкату (Rollback)
             $backup_dir = $this->backupExistingFiles($extract_dir, $module_code ?: basename($zip_file_path));
@@ -77,6 +124,20 @@ class InstallService
             }
 
             $installed_paths = $move_result;
+            if ($registration) {
+                $ids = array_map(function ($row) {
+                    return (int)$row['extension_install_id'];
+                }, $registration);
+                $previousPaths = $this->db->query("SELECT DISTINCT `path` FROM `" . DB_PREFIX . "extension_path` WHERE `extension_install_id` IN (" . implode(',', $ids) . ")");
+                foreach ($previousPaths->rows as $row) {
+                    $installed_paths[] = $row['path'];
+                }
+                $installed_paths = array_values(array_unique($installed_paths));
+            }
+            if ($existing !== null && ($existing['source'] ?? '') === 'legacy_gdt') {
+                $legacy = $this->db->query("SELECT `paths` FROM `" . DB_PREFIX . "gdt_modules` WHERE `code` = '" . $this->db->escape($module_code) . "' LIMIT 1");
+                $installed_paths = array_values(array_unique(array_merge($installed_paths, json_decode($legacy->row['paths'] ?? '[]', true) ?: [])));
+            }
 
             // Етап 4: Обробка XML
             $xml_result = $this->processModuleXml($extract_dir, $extension_install_id);
@@ -85,7 +146,9 @@ class InstallService
             }
 
             // Етап 5: Запуск скрипта оновлення/встановлення (upgrade.php / install.php)
-            $this->executeModuleScript($extract_dir, $module_code);
+            if ($existing === null || !version_compare($existing['version'], $this->packageMetadata['version'], '==')) {
+                $this->executeModuleScript($extract_dir, $module_code, $isUpdate);
+            }
 
             // Етап 6: Збереження в базу даних
             $save_result = $this->saveModuleToDatabase($extract_dir, $module_code, $installed_paths, $server_module_info, $temp_file);
@@ -99,6 +162,7 @@ class InstallService
             // Етап 8: Очищення тимчасових файлів
             $this->cleanupInstallation($extract_dir, $temp_file);
 
+            $this->consolidateExtensionInstalls($extension_install_id, $registration, $installed_paths);
             $this->moduleRegistry->upsert($this->pendingModule);
             LoggerService::info('Successfully installed module ' . $module_code, 'InstallService');
 
@@ -107,12 +171,25 @@ class InstallService
             if ($backup_dir) {
                 $this->restoreBackup($backup_dir);
             }
+            if ($newInstallation && $extension_install_id !== null) {
+                $this->db->query("DELETE FROM `" . DB_PREFIX . "extension_path` WHERE `extension_install_id` = " . (int)$extension_install_id);
+                $model->deleteExtensionInstall($extension_install_id);
+            }
             $error = 'Installation error: ' . $e->getMessage();
             LoggerService::write('GDT Install Service error: ' . $error);
             return $error;
         } finally {
+            if ($extract_base !== null || $extract_dir !== null) {
+                $this->cleanupInstallation($extract_base ?: $extract_dir, $temp_file ?: '');
+            } elseif ($temp_file && is_file($temp_file)) {
+                unlink($temp_file);
+            }
             if ($maintenanceStarted) {
                 $this->setMaintenanceMode(false);
+            }
+            if (is_resource($installationLock)) {
+                flock($installationLock, LOCK_UN);
+                fclose($installationLock);
             }
         }
     }
@@ -128,7 +205,7 @@ class InstallService
     private function unzipModule($temp_file, $install_token, $upload_dir)
     {
         if (!file_exists($temp_file)) {
-            return 'Module file not found';
+            throw new \RuntimeException('Module file not found');
         }
 
         $zip = new \ZipArchive();
@@ -142,7 +219,7 @@ class InstallService
 
                 LoggerService::write('GDT Install Service: Module extracted to ' . $extract_dir);
         } else {
-            return 'Failed to open ZIP archive';
+            throw new \RuntimeException('Failed to open ZIP archive');
         }
 
         @unlink($temp_file);
@@ -204,7 +281,6 @@ class InstallService
                     throw new \RuntimeException('Cannot create module directory: ' . $destination);
                 }
                 {
-                    $model->addExtensionPath($extension_install_id, $destination);
                     $installed_paths[] = $destination;
                         LoggerService::write('GDT Install Service: Created directory: ' . $destination);
                 }
@@ -215,7 +291,6 @@ class InstallService
                     throw new \RuntimeException('Cannot install module file: ' . $destination);
                 }
                 {
-                    $model->addExtensionPath($extension_install_id, $destination);
                     $installed_paths[] = $destination;
                         LoggerService::write('GDT Install Service: Moved file: ' . $destination);
                 }
@@ -257,12 +332,16 @@ class InstallService
                 return 'XML does not contain required <code> element';
             }
 
-            $code = $code_node->nodeValue;
+            $code = trim($code_node->nodeValue);
+            if ($code === '') {
+                return 'XML modification code cannot be empty';
+            }
 
             // Перевіряємо чи модифікація вже встановлена
             $modification_info = $model->getModificationByCode($code);
             if ($modification_info) {
-                $model->deleteModification($modification_info['modification_id']);
+                // Old databases may already contain several rows with this code.
+                $this->db->query("DELETE FROM `" . DB_PREFIX . "modification` WHERE `code` = '" . $this->db->escape($code) . "'");
             }
 
             $name = $this->getXmlValue($dom, 'name', '');
@@ -278,7 +357,7 @@ class InstallService
                 'version' => $version,
                 'link' => $link,
                 'xml' => $xml,
-                'status' => 1
+                'status' => $modification_info['status'] ?? 1
             ];
 
             $model->addModification($modification_data);
@@ -358,50 +437,9 @@ class InstallService
         try {
             $this->ensureCoreTables();
 
-            $module_data = array();
-
-            if (is_array($server_module_info)) {
-                foreach ($server_module_info as $key => $value) {
-                    if ($value !== null && $value !== '') {
-                        $module_data[$key] = $value;
-                    }
-                }
-            }
-
-            // Inspect extract_dir for metadata files
-            $module_json_file = $extract_dir . '/opencart-module.json';
-            if (is_file($module_json_file)) {
-                $parsed_json = json_decode(file_get_contents($module_json_file), true);
-                if (is_array($parsed_json)) {
-                    foreach ($parsed_json as $k => $v) {
-                        if ($v !== null && $v !== '') {
-                            $module_data[$k] = $v;
-                        }
-                    }
-                }
-            }
-
-            $install_json_file = $extract_dir . '/install.json';
-            if (is_file($install_json_file)) {
-                $parsed_json = json_decode(file_get_contents($install_json_file), true);
-                if (is_array($parsed_json)) {
-                    foreach ($parsed_json as $k => $v) {
-                        if ((!isset($module_data[$k]) || $module_data[$k] === '') && $v !== null && $v !== '') {
-                            $module_data[$k] = $v;
-                        }
-                    }
-                }
-            }
-
-            $code = $module_code ?: ($module_data['code'] ?? '');
-            $module_data['code'] = $code;
-            if (empty($code)) {
-                return 'Module code is required';
-            }
-
-            // Записуємо в базу даних
-            $version = $this->resolveVersion($module_data, $extract_dir, $code, $server_module_info);
-            $module_data['version'] = $version;
+            $module_data = $this->packageMetadata;
+            $code = $module_data['code'];
+            $version = $module_data['version'];
             $name = $module_data['module_name'] ?? $module_data['name'] ?? $code;
             $module_type = $module_data['type'] ?? 'module';
 
@@ -424,8 +462,12 @@ class InstallService
                 `status` = 1,
                 `updated_at` = NOW()");
 
+            $previousPaths = $this->db->query("SELECT `file_path` FROM `" . DB_PREFIX . "ocm_module_files` WHERE `module_code` = '" . $this->db->escape($code) . "' AND `removed_at` IS NULL");
+            foreach ($previousPaths->rows as $row) {
+                $paths[] = $row['file_path'];
+            }
+            $paths = array_values(array_unique($paths));
             $this->db->query("DELETE FROM `" . DB_PREFIX . "ocm_module_files` WHERE `module_code` = '" . $this->db->escape($code) . "'");
-
             foreach ($paths as $path) {
                 $absolute_path = $this->getOpenCartPath($path);
                 $file_hash = (is_file($absolute_path) && is_readable($absolute_path)) ? sha1_file($absolute_path) : '';
@@ -441,7 +483,8 @@ class InstallService
 
             $install_xml_file = $extract_dir . '/install.xml';
             $index_hash = is_file($install_xml_file) ? sha1_file($install_xml_file) : '';
-            $package_hash = is_file($temp_file) ? sha1_file($temp_file) : '';
+            $package_hash = $module_data['_package_hash'] ?? '';
+            unset($module_data['_package_hash']);
 
             $this->db->query("INSERT INTO `" . DB_PREFIX . "ocm_module_versions` SET
                 `module_code` = '" . $this->db->escape($code) . "',
@@ -476,9 +519,11 @@ class InstallService
 
         try {
             $this->moduleRegistry->assertWritable();
-            if (!$this->moduleRegistry->getModuleByCode($code)) {
+            $registered = $this->moduleRegistry->getModuleByCode($code);
+            if (!$registered) {
                 throw new \RuntimeException('Module is not registered: ' . $code);
             }
+            $code = $registered['code'];
             // 1. Отримуємо файли модуля з таблиці ocm_module_files або ocm_modules
             $paths = [];
             $files_query = $this->db->query("SELECT `file_path` FROM `" . DB_PREFIX . "ocm_module_files` WHERE `module_code` = '" . $this->db->escape($code) . "'");
@@ -541,7 +586,7 @@ class InstallService
 
             // 3. Видаляємо модифікацію (якщо є)
             $this->registry->get('load')->model('setting/modification');
-            $modification_info = $this->registry->get('model_setting_modification')->getModificationByCode($code);
+            $modification_info = $this->registry->get('model_setting_modification')->getModificationByCode(($registered['modification_code'] ?? '') ?: $code);
             if ($modification_info) {
                 $this->registry->get('model_setting_modification')->deleteModification($modification_info['modification_id']);
                 LoggerService::write('GDT Install Service: Deleted modification: ' . $code);
@@ -550,6 +595,11 @@ class InstallService
             // 4. Видаляємо інформацію про встановлення з бази OC
             $this->registry->get('load')->model('setting/extension');
             $this->db->query("DELETE FROM " . DB_PREFIX . "extension_install WHERE filename LIKE '" . $this->db->escape($code) . ".ocmod.zip'");
+            if (!empty($registered['extension_install_id'])) {
+                $id = (int)$registered['extension_install_id'];
+                $this->db->query("DELETE FROM `" . DB_PREFIX . "extension_path` WHERE `extension_install_id` = " . $id);
+                $this->registry->get('model_setting_extension')->deleteExtensionInstall($id);
+            }
 
             // 5. Видаляємо записи з OCM таблиць
             $this->db->query("DELETE FROM `" . DB_PREFIX . "ocm_modules` WHERE `code` = '" . $this->db->escape($code) . "'");
@@ -605,7 +655,7 @@ class InstallService
             $full_path = DIR_SYSTEM . substr($path, 7);
         } else {
             // Файли в корені - визначаємо корінь через DIR_APPLICATION
-            $root = rtrim(str_replace('admin/', '', rtrim(DIR_APPLICATION, '/')), '/') . '/';
+            $root = dirname(rtrim(DIR_APPLICATION, '/')) . '/';
             $full_path = $root . $path;
         }
 
@@ -632,13 +682,197 @@ class InstallService
         $config->set('module_gdt_updater_auto_modules', $auto);
     }
 
+    private function packageRoot($directory)
+    {
+        if (
+            is_dir($directory . '/upload') || is_file($directory . '/install.xml')
+            || is_file($directory . '/opencart-module.json') || is_file($directory . '/install.php')
+            || is_file($directory . '/upgrade.php')
+        ) {
+            return $directory;
+        }
+        $entries = array_values(array_filter(glob($directory . '/*') ?: [], function ($path) {
+            return basename($path) !== '__MACOSX';
+        }));
+        if (count($entries) === 1 && is_dir($entries[0])) {
+            return $this->packageRoot($entries[0]);
+        }
+        throw new \RuntimeException('Archive does not contain an OpenCart module');
+    }
+
+    private function readJsonMetadata($path)
+    {
+        $contents = file_get_contents($path);
+        $metadata = json_decode(preg_replace('/^\xEF\xBB\xBF/', '', $contents), true);
+        if (!is_array($metadata) || json_last_error() !== JSON_ERROR_NONE) {
+            throw new \RuntimeException('Invalid module metadata: ' . basename($path) . ' (' . json_last_error_msg() . ')');
+        }
+        return $metadata;
+    }
+
+    private function readPackageMetadata($directory, $requestedCode, array $serverMetadata)
+    {
+        // Package fields override server fields. Read upload/ metadata before rename().
+        $metadata = $serverMetadata;
+        foreach (['upload/install.json', 'install.json', 'upload/opencart-module.json', 'opencart-module.json'] as $file) {
+            if (is_file($directory . '/' . $file)) {
+                foreach ($this->readJsonMetadata($directory . '/' . $file) as $key => $value) {
+                    if ($value !== null && $value !== '') {
+                        $metadata[$key] = $value;
+                    }
+                }
+            }
+        }
+        $packageCode = $metadata['code'] ?? '';
+        $code = $requestedCode ?: $packageCode;
+        if (!is_string($code) || !preg_match('/^[a-zA-Z0-9_\-]+$/D', $code)) {
+            throw new \RuntimeException('A valid module code is required');
+        }
+        $metadata['code'] = $code;
+        $metadata['server_code'] = $requestedCode ?: $code;
+        $metadata['aliases'] = array_values(array_unique(array_filter([$code, $packageCode], 'is_string')));
+        if (is_file($directory . '/install.xml')) {
+            $dom = new \DOMDocument();
+            if (!@$dom->loadXML(file_get_contents($directory . '/install.xml'))) {
+                throw new \RuntimeException('Invalid install.xml');
+            }
+            $metadata['modification_code'] = trim($this->getXmlValue($dom, 'code', ''));
+        }
+        $metadata['version'] = $this->resolveVersion($metadata, $directory, $code, $serverMetadata);
+        LoggerService::info('Package ' . $code . ': installed version ' . $metadata['version'], 'InstallService');
+        return $metadata;
+    }
+
+    private function findExtensionInstalls(array $metadata, $directory)
+    {
+        $ids = [];
+        $codes = $metadata['aliases'] ?? [$metadata['code']];
+        foreach ($codes as $code) {
+            $registered = $this->moduleRegistry->getModuleByCode($code);
+            if ($registered) {
+                $codes = array_merge($codes, [$registered['code']], $registered['aliases'] ?? []);
+                if (!empty($registered['extension_install_id'])) {
+                    $ids[] = (int)$registered['extension_install_id'];
+                }
+            }
+        }
+        if (is_file($directory . '/install.xml')) {
+            $dom = new \DOMDocument();
+            if (@$dom->loadXML(file_get_contents($directory . '/install.xml'))) {
+                $xmlCode = trim($this->getXmlValue($dom, 'code', ''));
+                if ($xmlCode !== '') {
+                    $this->registry->get('load')->model('setting/modification');
+                    $modification = $this->registry->get('model_setting_modification')->getModificationByCode($xmlCode);
+                    if (!empty($modification['extension_install_id'])) {
+                        $ids[] = (int)$modification['extension_install_id'];
+                    }
+                    $codes[] = $xmlCode;
+                }
+            }
+        }
+        // A declared controller is stable even when an old archive filename differs from code.
+        $controller = $metadata['controller'] ?? '';
+        if (is_string($controller) && preg_match('~^[a-zA-Z0-9_/]+$~D', $controller)) {
+            $controllerPath = 'admin/controller/' . $controller . '.php';
+            if (is_file($directory . '/upload/' . $controllerPath) || ($directory === '' && is_file(DIR_APPLICATION . 'controller/' . $controller . '.php'))) {
+                $result = $this->db->query("SELECT DISTINCT `extension_install_id` FROM `" . DB_PREFIX . "extension_path` WHERE `path` = '" . $this->db->escape($controllerPath) . "'");
+                foreach ($result->rows as $row) {
+                    $ids[] = (int)$row['extension_install_id'];
+                }
+            }
+        }
+        $matches = [];
+        $result = $this->db->query("SELECT * FROM `" . DB_PREFIX . "extension_install` ORDER BY `extension_install_id` ASC");
+        foreach ($result->rows as $row) {
+            $matchesCode = false;
+            foreach (array_unique($codes) as $code) {
+                $pattern = '/^' . preg_quote($code, '/') . '(?:[-_]v?\d+(?:\.\d+)*(?:[-+][a-zA-Z0-9.-]+)?)?\.(?:ocmod\.)?zip$/iD';
+                if (preg_match($pattern, basename($row['filename']))) {
+                    $matchesCode = true;
+                    break;
+                }
+            }
+            if ($matchesCode || in_array((int)$row['extension_install_id'], $ids, true)) {
+                $matches[] = $row;
+            }
+        }
+        return $matches;
+    }
+
+    private function consolidateExtensionInstalls($keepId, array $registrations, array $paths)
+    {
+        $ids = array_unique(array_merge([(int)$keepId], array_map(function ($row) {
+            return (int)$row['extension_install_id'];
+        }, $registrations)));
+        $idList = implode(',', $ids);
+        $existing = $this->db->query("SELECT DISTINCT `path` FROM `" . DB_PREFIX . "extension_path` WHERE `extension_install_id` IN (" . $idList . ")");
+        foreach ($existing->rows as $row) {
+            $paths[] = $row['path'];
+        }
+        $this->db->query("DELETE FROM `" . DB_PREFIX . "extension_path` WHERE `extension_install_id` IN (" . $idList . ")");
+        $model = $this->registry->get('model_setting_extension');
+        foreach (array_unique($paths) as $path) {
+            $model->addExtensionPath($keepId, $path);
+        }
+        foreach ($ids as $id) {
+            if ($id !== (int)$keepId) {
+                $this->db->query("UPDATE `" . DB_PREFIX . "modification` SET `extension_install_id` = " . (int)$keepId . " WHERE `extension_install_id` = " . $id);
+                $model->deleteExtensionInstall($id);
+            }
+        }
+    }
+
+    /** Repair historical duplicate installer records without running package scripts. */
+    public function repairInstallationRecords($code, array $installedMetadata = [])
+    {
+        $record = $this->moduleRegistry->getModuleByCode($code);
+        if ($record === null) {
+            throw new \RuntimeException('Module is not registered: ' . $code);
+        }
+        $metadata = array_merge($record, $installedMetadata);
+        $metadata['code'] = $record['code'];
+        $metadata['server_code'] = $record['server_code'] ?? $record['code'];
+        $metadata['aliases'] = array_values(array_unique(array_merge(
+            $record['aliases'] ?? [],
+            [$record['code']],
+            isset($installedMetadata['code']) ? [$installedMetadata['code']] : []
+        )));
+        $registrations = $this->findExtensionInstalls($metadata, '');
+        if (!$registrations) {
+            return ['code' => $record['code'], 'merged' => 0];
+        }
+        $keepId = (int)$registrations[0]['extension_install_id'];
+        $this->consolidateExtensionInstalls($keepId, $registrations, []);
+        $metadata['extension_install_id'] = $keepId;
+        $this->ensureCoreTables();
+        $paths = $this->db->query("SELECT `path` FROM `" . DB_PREFIX . "extension_path` WHERE `extension_install_id` = " . $keepId);
+        foreach ($paths->rows as $row) {
+            $path = $this->db->escape($row['path']);
+            $this->db->query("INSERT INTO `" . DB_PREFIX . "ocm_module_files` (`module_code`, `file_path`, `file_hash`, `installed_at`, `updated_at`)
+                SELECT '" . $this->db->escape($record['code']) . "', '" . $path . "', '', NOW(), NOW() FROM DUAL
+                WHERE NOT EXISTS (SELECT 1 FROM `" . DB_PREFIX . "ocm_module_files`
+                    WHERE `module_code` = '" . $this->db->escape($record['code']) . "' AND `file_path` = '" . $path . "' AND `removed_at` IS NULL)");
+        }
+        $this->db->query("UPDATE `" . DB_PREFIX . "ocm_modules` SET `installed_version` = '" . $this->db->escape($metadata['version']) . "',
+            `metadata_json` = '" . $this->db->escape(json_encode($metadata, JSON_UNESCAPED_UNICODE)) . "', `updated_at` = NOW()
+            WHERE `code` = '" . $this->db->escape($record['code']) . "'");
+        $this->moduleRegistry->upsert($metadata);
+        return ['code' => $record['code'], 'merged' => count($registrations) - 1, 'extension_install_id' => $keepId];
+    }
+
     private function resolveVersion(array $module_data, $extract_dir, $code, $server_module_info = array())
     {
-        foreach (['opencart-module.json', 'install.json'] as $filename) {
+        foreach (['opencart-module.json', 'upload/opencart-module.json', 'install.json', 'upload/install.json'] as $filename) {
             $path = $extract_dir . '/' . $filename;
-            $metadata = is_file($path) ? json_decode(file_get_contents($path), true) : null;
-            if (is_array($metadata) && $this->knownVersion($metadata['version'] ?? '')) {
-                return ltrim(trim($metadata['version']), 'vV');
+            $metadata = is_file($path) ? $this->readJsonMetadata($path) : null;
+            if (is_array($metadata) && isset($metadata['version']) && $metadata['version'] !== '') {
+                if ((string)$metadata['version'] === '0.0.0') {
+                    continue;
+                }
+                if (!$this->knownVersion($metadata['version'])) {
+                    throw new \RuntimeException('Invalid package version in ' . $filename);
+                }
+                return ltrim(trim((string)$metadata['version']), 'vV');
             }
         }
         $path = $extract_dir . '/install.xml';
@@ -658,8 +892,9 @@ class InstallService
 
     private function knownVersion($version)
     {
-        return is_string($version) && preg_match('/^v?\d+(?:\.\d+)*(?:[-+][0-9A-Za-z.-]+)?$/i', trim($version))
-            && ltrim(trim($version), 'vV') !== '0.0.0';
+        return (is_string($version) || is_int($version) || is_float($version))
+            && preg_match('/^v?\d+(?:\.\d+)*(?:[-+][0-9A-Za-z.-]+)?$/i', trim((string)$version))
+            && ltrim(trim((string)$version), 'vV') !== '0.0.0';
     }
 
     private function getOpenCartPath($relative_path)
@@ -679,7 +914,7 @@ class InstallService
             return DIR_SYSTEM . substr($destination, 7);
         }
 
-        $root = rtrim(str_replace('admin/', '', rtrim(DIR_APPLICATION, '/')), '/') . '/';
+        $root = dirname(rtrim(DIR_APPLICATION, '/')) . '/';
         return $root . $destination;
     }
 
@@ -857,12 +1092,13 @@ class InstallService
         LoggerService::info("Backup restoration completed", 'InstallService');
     }
 
-    private function executeModuleScript(string $extract_dir, string $module_code): void
+    private function executeModuleScript(string $extract_dir, string $module_code, bool $isUpdate = false): void
     {
         $upgrade_script = $extract_dir . '/upgrade.php';
         $install_script = $extract_dir . '/install.php';
 
-        $script = file_exists($upgrade_script) ? $upgrade_script : (file_exists($install_script) ? $install_script : null);
+        $candidate = $isUpdate ? $upgrade_script : $install_script;
+        $script = is_file($candidate) ? $candidate : null;
 
         if ($script) {
             LoggerService::info("Executing module script: " . basename($script), 'InstallService');
